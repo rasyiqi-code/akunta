@@ -171,8 +171,8 @@ pub fn create_sales_document(conn: &Connection, doc: SalesDocument) -> Result<St
                 )
                 .map_err(|e| e.to_string())?;
 
-                // Buat inventory log mutasi keluar
-                let log_id = format!("LOG-OUT-{}", doc.id);
+                // ID log unik per item: gabungan doc.id + product_id
+                let log_id = format!("LOG-OUT-{}-{}", doc.id, item.product_id);
                 conn.execute(
                     "INSERT INTO inventory_logs (id, product_id, date, type, qty, cost, reference, warehouse_id) VALUES (?1, ?2, ?3, 'KELUAR', ?4, ?5, ?6, 'w-01')",
                     params![log_id, item.product_id, doc.date, item.qty, avg_cost, doc.id],
@@ -361,8 +361,8 @@ pub fn create_purchase_document(
                 )
                 .map_err(|e| e.to_string())?;
 
-                // Buat inventory log mutasi masuk
-                let log_id = format!("LOG-IN-{}", doc.id);
+                // ID log unik per item: gabungan doc.id + product_id
+                let log_id = format!("LOG-IN-{}-{}", doc.id, item.product_id);
                 conn.execute(
                     "INSERT INTO inventory_logs (id, product_id, date, type, qty, cost, reference, warehouse_id) VALUES (?1, ?2, ?3, 'MASUK', ?4, ?5, ?6, 'w-01')",
                     params![log_id, item.product_id, doc.date, item.qty, item.price, doc.id],
