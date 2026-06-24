@@ -2,19 +2,20 @@ import React, { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { 
   FileSpreadsheet, Database, Play, CheckCircle, 
-  AlertTriangle, Upload, Download, Plus, FileText, X
+  AlertTriangle, Upload, Download, Plus, FileText, X, Settings
 } from 'lucide-react';
 import { db, DEFAULT_ACCOUNTS } from '../../utils/db';
 import { 
   generateProfitLoss, generateBalanceSheet, postJournalEntry, 
   exportToBackupString, importFromBackupString 
 } from '../../utils/ledgerEngine';
+import { adjustProductStock } from '../../utils/inventoryEngine';
 import { getNarrativeAnalysis } from '../../utils/gemini';
 import * as XLSX from 'xlsx';
 
 interface LedgerDashboardProps {
-  activeTab: 'JURNAL' | 'BUKUBESAR' | 'LABARUGI' | 'NERACA' | 'PAJAK';
-  setActiveTab: (tab: 'JURNAL' | 'BUKUBESAR' | 'LABARUGI' | 'NERACA' | 'PAJAK') => void;
+  activeTab: 'JURNAL' | 'BUKUBESAR' | 'LABARUGI' | 'NERACA' | 'PAJAK' | 'PERSEDIAAN';
+  setActiveTab: (tab: 'JURNAL' | 'BUKUBESAR' | 'LABARUGI' | 'NERACA' | 'PAJAK' | 'PERSEDIAAN') => void;
 }
 
 export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab, setActiveTab }) => {
@@ -22,6 +23,8 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab, set
   const journals = useLiveQuery(() => db.journals.orderBy('date').reverse().toArray()) || [];
   const accounts = useLiveQuery(() => db.accounts.toArray()) || [];
   const bankStatements = useLiveQuery(() => db.bankStatements.toArray()) || [];
+  const products = useLiveQuery(() => db.products.toArray()) || [];
+  const inventoryLogs = useLiveQuery(() => db.inventoryLogs.orderBy('date').reverse().toArray()) || [];
 
   // Laporan States
   const [plReport, setPlReport] = useState<any>(null);
@@ -41,10 +44,21 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab, set
     { accountCode: '', debit: 0, credit: 0 },
   ]);
 
+  // Product & Adjustment Modal States
+  const [showProductModal, setShowProductModal] = useState(false);
+  const [newProductName, setNewProductName] = useState('');
+  const [newProductSku, setNewProductSku] = useState('');
+  const [newProductPrice, setNewProductPrice] = useState(0);
+
+  const [showAdjustModal, setShowAdjustModal] = useState(false);
+  const [adjustProductId, setAdjustProductId] = useState('');
+  const [adjustQty, setAdjustQty] = useState(0);
+  const [adjustReason, setAdjustReason] = useState('');
+
   // Rekonsiliasi Bank State
   const [reconcilingId, setReconcilingId] = useState<string | null>(null);
 
-  // Panggil laporan ulang jika ada perubahan di jurnal
+  // Hitung Laba/Rugi & Neraca jika jurnal berubah
   useEffect(() => {
     const fetchReports = async () => {
       const pl = await generateProfitLoss();
@@ -55,35 +69,31 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab, set
     fetchReports();
   }, [journals]);
 
-  // F-AK-02: AI-Assisted Bank Reconciliation
+  // Total Nilai Persediaan
+  const totalInventoryValue = products.reduce((sum, p) => sum + (p.stockQty * p.averageCost), 0);
+
+  // Rekonsiliasi Bank
   const handleBankMatch = async (stmtId: string, statementDesc: string, amount: number) => {
     setReconcilingId(stmtId);
     try {
-      // AI mencari/mencocokkan transaksi
-      // Mari cari apakah ada jurnal dengan nominal yang pas tetapi belum direkonsiliasi
       const targetVal = Math.abs(amount);
       const matchedJrn = journals.find(j => {
         const totalDebit = j.lines.reduce((s, l) => s + l.debit, 0);
-        // Bandingkan nominal dan cek apakah deskripsi mirip secara kontekstual
-        const isNominalMatch = Math.abs(totalDebit - targetVal) < 1;
-        return isNominalMatch;
+        return Math.abs(totalDebit - targetVal) < 1;
       });
 
       if (matchedJrn) {
-        // Lakukan pencocokan
         await db.bankStatements.update(stmtId, { matchedJournalId: matchedJrn.id, confidenceScore: 95 });
-        alert(`Berhasil merekonsiliasi dengan Jurnal: ${matchedJrn.description} (Skor Kecocokan AI: 95%)`);
+        alert(`Berhasil merekonsiliasi dengan Jurnal: ${matchedJrn.description} (Skor AI: 95%)`);
       } else {
-        // Buat jurnal pencocokan otomatis jika tidak ada
-        // Masuk kas = Debit Kas (1101) & Kredit Pendapatan Penjualan (4101) atau sebaliknya
         const lines = amount > 0 
           ? [
-              { accountCode: '1101', debit: amount, credit: 0 }, // Debit Kas
-              { accountCode: '4101', debit: 0, credit: amount }  // Kredit Pendapatan
+              { accountCode: '1101', debit: amount, credit: 0 },
+              { accountCode: '4101', debit: 0, credit: amount }
             ]
           : [
-              { accountCode: '5206', debit: targetVal, credit: 0 }, // Debit Biaya Operasional
-              { accountCode: '1101', debit: 0, credit: targetVal }  // Kredit Kas
+              { accountCode: '5206', debit: targetVal, credit: 0 },
+              { accountCode: '1101', debit: 0, credit: targetVal }
             ];
 
         const newJrnId = await postJournalEntry({
@@ -93,7 +103,7 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab, set
         });
 
         await db.bankStatements.update(stmtId, { matchedJournalId: newJrnId, confidenceScore: 85 });
-        alert(`Jurnal penyesuaian otomatis dibuat dan direkonsiliasi: ID ${newJrnId} (Skor Kecocokan AI: 85%)`);
+        alert(`Jurnal penyesuaian otomatis dibuat dan direkonsiliasi: ID ${newJrnId} (Skor AI: 85%)`);
       }
     } catch (err: any) {
       alert(`Gagal rekonsiliasi: ${err.message}`);
@@ -102,7 +112,7 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab, set
     }
   };
 
-  // F-AS-04: Dr. Report - AI Diagnosis Laporan
+  // AI Diagnosis Laporan
   const handleDiagnosis = async (type: 'LABARUGI' | 'NERACA') => {
     setIsDiagnosing(true);
     setShowDiagnosisModal(true);
@@ -119,7 +129,7 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab, set
     }
   };
 
-  // Ekspor Excel via SheetJS (xlsx)
+  // Ekspor Excel
   const handleExportExcel = (reportType: string) => {
     let dataToExport: any[] = [];
 
@@ -145,15 +155,24 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab, set
       });
       dataToExport.push({ 'Kategori': 'Total Pendapatan', 'Kode Akun': '', 'Nama Akun': '', 'Nominal (Rp)': plReport.totalRevenue });
       
-      dataToExport.push({ 'Kategori': '', 'Kode Akun': '', 'Nama Akun': '', 'Nominal (Rp)': '' }); // Spasi
+      dataToExport.push({ 'Kategori': '', 'Kode Akun': '', 'Nama Akun': '', 'Nominal (Rp)': '' });
       dataToExport.push({ 'Kategori': 'BEBAN', 'Kode Akun': '', 'Nama Akun': '', 'Nominal (Rp)': '' });
       plReport.expenses.forEach((e: any) => {
         dataToExport.push({ 'Kategori': '', 'Kode Akun': e.code, 'Nama Akun': e.name, 'Nominal (Rp)': e.amount });
       });
       dataToExport.push({ 'Kategori': 'Total Beban', 'Kode Akun': '', 'Nama Akun': '', 'Nominal (Rp)': plReport.totalExpenses });
-      
-      dataToExport.push({ 'Kategori': '', 'Kode Akun': '', 'Nama Akun': '', 'Nominal (Rp)': '' }); // Spasi
       dataToExport.push({ 'Kategori': 'LABA BERSIH', 'Kode Akun': '', 'Nama Akun': '', 'Nominal (Rp)': plReport.netProfit });
+    } else if (reportType === 'PERSEDIAAN') {
+      products.forEach(p => {
+        dataToExport.push({
+          'SKU': p.sku,
+          'Nama Produk': p.name,
+          'Stok Unit': p.stockQty,
+          'Biaya Rata-Rata (Rp)': p.averageCost,
+          'Total Nilai Persediaan (Rp)': p.stockQty * p.averageCost,
+          'Harga Jual (Rp)': p.sellingPrice
+        });
+      });
     } else {
       alert('Tipe ekspor belum didukung / Data tidak tersedia');
       return;
@@ -165,7 +184,7 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab, set
     XLSX.writeFile(wb, `Akunta_${reportType}_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-  // Backup & Restore Handlers
+  // Backup & Restore
   const handleDownloadBackup = async () => {
     const backupStr = await exportToBackupString();
     const blob = new Blob([backupStr], { type: 'application/json' });
@@ -185,7 +204,7 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab, set
       try {
         const fileContent = event.target?.result as string;
         await importFromBackupString(fileContent);
-        alert('Data berhasil dipulihkan dari cadangan (Backup)!');
+        alert('Data berhasil dipulihkan!');
         window.location.reload();
       } catch (err: any) {
         alert(err.message);
@@ -194,16 +213,10 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab, set
     reader.readAsText(file);
   };
 
-  // Tambah baris baru di form jurnal manual
-  const handleAddJurnalLine = () => {
-    setJurnalLines([...jurnalLines, { accountCode: '', debit: 0, credit: 0 }]);
-  };
-
   // Simpan Jurnal Manual
   const handleSaveJurnalManual = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      // Filter baris kosong & konversi tipe nominal
       const filteredLines = jurnalLines
         .filter(l => l.accountCode !== '')
         .map(l => ({
@@ -234,6 +247,49 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab, set
     }
   };
 
+  // Tambah Produk Baru
+  const handleSaveProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const newId = `prod-${Math.random().toString(36).substring(2, 9)}`;
+      await db.products.add({
+        id: newId,
+        name: newProductName,
+        sku: newProductSku.toUpperCase(),
+        stockQty: 0,
+        averageCost: 0,
+        sellingPrice: newProductPrice,
+      });
+      setShowProductModal(false);
+      setNewProductName('');
+      setNewProductSku('');
+      setNewProductPrice(0);
+      alert('Produk baru sukses ditambahkan!');
+    } catch (err: any) {
+      alert(`Gagal menambah produk: ${err.message}`);
+    }
+  };
+
+  // Stock Adjustment Manual
+  const handleSaveStockAdjustment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await adjustProductStock(
+        adjustProductId,
+        adjustQty,
+        new Date().toISOString().split('T')[0],
+        adjustReason
+      );
+      setShowAdjustModal(false);
+      setAdjustProductId('');
+      setAdjustQty(0);
+      setAdjustReason('');
+      alert('Penyesuaian stok berhasil diposting!');
+    } catch (err: any) {
+      alert(`Gagal penyesuaian: ${err.message}`);
+    }
+  };
+
   return (
     <div className="accountant-workspace">
       
@@ -244,6 +300,9 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab, set
         </button>
         <button className={`tab-btn ${activeTab === 'BUKUBESAR' ? 'active' : ''}`} onClick={() => setActiveTab('BUKUBESAR')}>
           Daftar Akun (COA)
+        </button>
+        <button className={`tab-btn ${activeTab === 'PERSEDIAAN' ? 'active' : ''}`} onClick={() => setActiveTab('PERSEDIAAN')}>
+          Persediaan
         </button>
         <button className={`tab-btn ${activeTab === 'LABARUGI' ? 'active' : ''}`} onClick={() => setActiveTab('LABARUGI')}>
           Laba Rugi
@@ -329,13 +388,6 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab, set
                       </td>
                     </tr>
                   ))}
-                  {journals.length === 0 && (
-                    <tr>
-                      <td colSpan={6} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
-                        Belum ada transaksi tercatat. Mulai input melalui chat di Mode Asisten.
-                      </td>
-                    </tr>
-                  )}
                 </tbody>
               </table>
             </div>
@@ -381,7 +433,111 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab, set
           </>
         )}
 
-        {/* Tab 3: LABA RUGI */}
+        {/* Tab 3: PERSEDIAAN (Inventory) - Fase 2 */}
+        {activeTab === 'PERSEDIAAN' && (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ fontFamily: 'var(--font-display)', fontWeight: 600 }}>Modul Persediaan Barang</h3>
+                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  Total Nilai Stok (Average Cost): <strong>Rp {totalInventoryValue.toLocaleString('id-ID')}</strong>
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button className="btn btn-secondary" onClick={() => handleExportExcel('PERSEDIAAN')}>
+                  <FileSpreadsheet size={14} />
+                  <span>Excel</span>
+                </button>
+                <button className="btn btn-secondary" onClick={() => setShowAdjustModal(true)}>
+                  <Settings size={14} />
+                  <span>Stock Opname</span>
+                </button>
+                <button className="btn btn-primary" onClick={() => setShowProductModal(true)}>
+                  <Plus size={14} />
+                  <span>Tambah Produk</span>
+                </button>
+              </div>
+            </div>
+
+            {/* List Produk */}
+            <div style={{ fontWeight: 600, fontSize: '14px', marginBottom: '8px' }}>Daftar Produk</div>
+            <div className="table-wrapper" style={{ marginBottom: '24px' }}>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>SKU</th>
+                    <th>Nama Produk</th>
+                    <th style={{ textAlign: 'right' }}>Stok Unit</th>
+                    <th style={{ textAlign: 'right' }}>Harga Rata-Rata (COGS)</th>
+                    <th style={{ textAlign: 'right' }}>Total Nilai</th>
+                    <th style={{ textAlign: 'right' }}>Harga Jual</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {products.map(p => (
+                    <tr key={p.id}>
+                      <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{p.sku}</td>
+                      <td>{p.name}</td>
+                      <td className="amount-col" style={{ color: p.stockQty < 5 ? 'var(--accent-danger)' : 'var(--text-primary)' }}>
+                        {p.stockQty} Unit
+                      </td>
+                      <td className="amount-col">Rp {p.averageCost.toLocaleString('id-ID')}</td>
+                      <td className="amount-col" style={{ fontWeight: 600 }}>
+                        Rp {(p.stockQty * p.averageCost).toLocaleString('id-ID')}
+                      </td>
+                      <td className="amount-col">Rp {p.sellingPrice.toLocaleString('id-ID')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Log Mutasi Stok */}
+            <div style={{ fontWeight: 600, fontSize: '14px', marginBottom: '8px' }}>Mutasi Stok Terbaru</div>
+            <div className="table-wrapper">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Tanggal</th>
+                    <th>Produk</th>
+                    <th>Tipe Mutasi</th>
+                    <th style={{ textAlign: 'right' }}>Kuantitas</th>
+                    <th style={{ textAlign: 'right' }}>Biaya / Unit</th>
+                    <th>Referensi / Keterangan</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {inventoryLogs.map(log => {
+                    const prod = products.find(p => p.id === log.productId);
+                    return (
+                      <tr key={log.id}>
+                        <td>{log.date}</td>
+                        <td>{prod ? `${prod.name} (${prod.sku})` : 'Produk tidak dikenal'}</td>
+                        <td>
+                          <span style={{
+                            fontSize: '11px',
+                            padding: '2px 8px',
+                            borderRadius: '10px',
+                            fontWeight: 600,
+                            background: log.type === 'MASUK' ? 'rgba(16, 185, 129, 0.1)' : log.type === 'KELUAR' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                            color: log.type === 'MASUK' ? 'var(--accent-success)' : log.type === 'KELUAR' ? 'var(--accent-danger)' : 'var(--accent-warning)',
+                          }}>
+                            {log.type}
+                          </span>
+                        </td>
+                        <td className="amount-col">{log.qty} Unit</td>
+                        <td className="amount-col">Rp {log.cost.toLocaleString('id-ID')}</td>
+                        <td style={{ fontFamily: 'monospace', fontSize: '12px' }}>{log.reference || '-'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
+        {/* Tab 4: LABA RUGI */}
         {activeTab === 'LABARUGI' && plReport && (
           <>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -445,7 +601,7 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab, set
           </>
         )}
 
-        {/* Tab 4: NERACA */}
+        {/* Tab 5: NERACA */}
         {activeTab === 'NERACA' && bsReport && (
           <>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -521,7 +677,7 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab, set
           </>
         )}
 
-        {/* Tab 5: BANK & PAJAK & BACKUP */}
+        {/* Tab 6: BANK & PAJAK */}
         {activeTab === 'PAJAK' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
             
@@ -579,32 +735,30 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab, set
 
             {/* Pajak Indonesia & Backup Section */}
             <div style={{ display: 'flex', gap: '20px' }}>
-              {/* Pajak Card */}
               <div style={{ flex: 1, background: 'var(--bg-card)', padding: '20px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
-                <h4 style={{ fontFamily: 'var(--font-display)', fontWeight: 600, marginBottom: '12px' }}>F-AS-06: e-Faktur Pajak</h4>
+                <h4 style={{ fontFamily: 'var(--font-display)', fontWeight: 600, marginBottom: '12px' }}>e-Faktur Pajak</h4>
                 <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
                   Unduh data transaksi terpilih dalam skema template CSV Direktorat Jenderal Pajak (DJP).
                 </p>
                 <div style={{ display: 'flex', gap: '8px' }}>
-                  <button className="btn btn-secondary" onClick={() => alert('Fitur CSV e-Faktur Pajak Keluaran siap diunduh!')}>
+                  <button className="btn btn-secondary" onClick={() => alert('e-Faktur CSV siap diunduh!')}>
                     <Download size={12} />
                     <span>e-Faktur PPN</span>
                   </button>
-                  <button className="btn btn-secondary" onClick={() => alert('Fitur CSV Bukti Potong PPh 21/23 siap diunduh!')}>
+                  <button className="btn btn-secondary" onClick={() => alert('e-Bupot CSV siap diunduh!')}>
                     <Download size={12} />
                     <span>e-Bupot PPh</span>
                   </button>
                 </div>
               </div>
 
-              {/* Backup & Cadangan Card */}
               <div style={{ flex: 1, background: 'var(--bg-card)', padding: '20px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
                 <h4 style={{ fontFamily: 'var(--font-display)', fontWeight: 600, marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <Database size={16} />
                   <span>Cadangan & Pemulihan (Backup)</span>
                 </h4>
                 <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-                  Ekspor seluruh database lokal (IndexedDB) Akunta ke file JSON portabel, atau impor dari file cadangan yang ada.
+                  Ekspor seluruh database lokal (IndexedDB) Akunta ke file JSON portabel.
                 </p>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                   <button className="btn btn-primary" onClick={handleDownloadBackup}>
@@ -683,7 +837,7 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab, set
                     onChange={e => {
                       const newLines = [...jurnalLines];
                       newLines[index].debit = parseFloat(e.target.value) || 0;
-                      if (newLines[index].debit > 0) newLines[index].credit = 0; // mutually exclusive
+                      if (newLines[index].debit > 0) newLines[index].credit = 0;
                       setJurnalLines(newLines);
                     }}
                   />
@@ -704,13 +858,82 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab, set
               ))}
 
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '16px' }}>
-                <button type="button" className="btn btn-secondary" onClick={handleAddJurnalLine}>
+                <button type="button" className="btn btn-secondary" onClick={() => setJurnalLines([...jurnalLines, { accountCode: '', debit: 0, credit: 0 }])}>
                   + Tambah Baris
                 </button>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <button type="button" className="btn btn-secondary" onClick={() => setShowJurnalModal(false)}>Batal</button>
                   <button type="submit" className="btn btn-primary">Simpan Jurnal</button>
                 </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Tambah Produk (Fase 2) */}
+      {showProductModal && (
+        <div className="modal-overlay">
+          <div className="modal-container" style={{ maxWidth: '400px' }}>
+            <div className="modal-header">
+              <h3 style={{ fontFamily: 'var(--font-display)', fontWeight: 600 }}>Tambah Produk Baru</h3>
+              <button style={{ background: 'transparent', border: 'none', color: 'white', cursor: 'pointer' }} onClick={() => setShowProductModal(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            <form onSubmit={handleSaveProduct} className="modal-body">
+              <div className="form-group">
+                <label className="form-label">Nama Produk</label>
+                <input type="text" className="form-input" placeholder="contoh: Kopi Arabika Lintong" value={newProductName} onChange={e => setNewProductName(e.target.value)} required />
+              </div>
+              <div className="form-group">
+                <label className="form-label">SKU Produk</label>
+                <input type="text" className="form-input" placeholder="contoh: KOPI-LNTG" value={newProductSku} onChange={e => setNewProductSku(e.target.value)} required />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Harga Jual per Unit (Rp)</label>
+                <input type="number" className="form-input" placeholder="contoh: 65000" value={newProductPrice || ''} onChange={e => setNewProductPrice(parseFloat(e.target.value) || 0)} required />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' }}>
+                <button type="button" className="btn btn-secondary" onClick={() => setShowProductModal(false)}>Batal</button>
+                <button type="submit" className="btn btn-primary">Simpan Produk</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Stock Adjustment (Fase 2) */}
+      {showAdjustModal && (
+        <div className="modal-overlay">
+          <div className="modal-container" style={{ maxWidth: '400px' }}>
+            <div className="modal-header">
+              <h3 style={{ fontFamily: 'var(--font-display)', fontWeight: 600 }}>Stock Opname / Adjustment</h3>
+              <button style={{ background: 'transparent', border: 'none', color: 'white', cursor: 'pointer' }} onClick={() => setShowAdjustModal(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            <form onSubmit={handleSaveStockAdjustment} className="modal-body">
+              <div className="form-group">
+                <label className="form-label">Pilih Produk</label>
+                <select className="form-input" value={adjustProductId} onChange={e => setAdjustProductId(e.target.value)} required>
+                  <option value="">Pilih...</option>
+                  {products.map(p => (
+                    <option key={p.id} value={p.id}>{p.name} ({p.sku}) - Sisa Stok: {p.stockQty} unit</option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Jumlah Stok Riil yang Baru</label>
+                <input type="number" className="form-input" placeholder="contoh: 12" value={adjustQty || ''} onChange={e => setAdjustQty(parseInt(e.target.value) || 0)} required />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Alasan Penyesuaian</label>
+                <input type="text" className="form-input" placeholder="contoh: Stock Opname Juni 2026 / Barang Rusak" value={adjustReason} onChange={e => setAdjustReason(e.target.value)} required />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' }}>
+                <button type="button" className="btn btn-secondary" onClick={() => setShowAdjustModal(false)}>Batal</button>
+                <button type="submit" className="btn btn-primary">Post Penyesuaian</button>
               </div>
             </form>
           </div>

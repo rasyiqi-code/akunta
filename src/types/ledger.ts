@@ -48,4 +48,26 @@ export interface BackupData {
   journals: JournalEntry[];
   contacts: Contact[];
   bankStatements: BankStatementItem[];
+  products: Product[];
+  inventoryLogs: InventoryLog[];
 }
+
+export interface Product {
+  id: string;
+  name: string;
+  sku: string;
+  stockQty: number;
+  averageCost: number;
+  sellingPrice: number;
+}
+
+export interface InventoryLog {
+  id: string;
+  productId: string;
+  date: string;
+  type: 'MASUK' | 'KELUAR' | 'ADJUSTMENT';
+  qty: number;
+  cost: number;
+  reference?: string; // Menyimpan Ref ID Jurnal terkait
+}
+

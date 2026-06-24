@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Send, Sparkles, Check, X } from 'lucide-react';
+import { Send, Sparkles, Check, X, Camera } from 'lucide-react';
 import { db, DEFAULT_ACCOUNTS } from '../../utils/db';
 import { parseInputWithGemini } from '../../utils/gemini';
 import { postJournalEntry } from '../../utils/ledgerEngine';
+import { purchaseProduct, sellProduct } from '../../utils/inventoryEngine';
 
 interface ChatInterfaceProps {
   onReportRequested: (reportType: 'LABARUGI' | 'NERACA' | 'BUKUBESAR' | 'PIUTANG' | 'PAJAK') => void;
@@ -12,15 +13,17 @@ interface ChatInterfaceProps {
 export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onReportRequested }) => {
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [ocrProcessing, setOcrProcessing] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Ambil data chat dari IndexedDB secara reaktif
+  // Ambil data chat dari IndexedDB
   const messages = useLiveQuery(() => db.chatMessages.toArray()) || [];
 
   // Auto-scroll ke bawah saat ada pesan baru
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isLoading]);
+  }, [messages, isLoading, ocrProcessing]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,11 +40,15 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onReportRequested 
       timestamp: new Date().toISOString(),
     });
 
-    try {
-      // 2. Kirim input ke Gemini API (atau simulator fallback)
-      const aiResult = await parseInputWithGemini(userText);
+    await processAiInput(userText);
+  };
 
-      // 3. Tangani hasil parsing berdasarkan Intent
+  const processAiInput = async (text: string) => {
+    try {
+      // 2. Kirim input ke Gemini API (atau simulator)
+      const aiResult = await parseInputWithGemini(text);
+
+      // 3. Tangani hasil
       if (aiResult.intent === 'TRANSACTION_POST' && aiResult.transaction) {
         // Tampilkan kartu konfirmasi transaksi
         await db.chatMessages.add({
@@ -61,7 +68,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onReportRequested 
           timestamp: new Date().toISOString(),
         });
       } else {
-        // Intent UNKNOWN atau informasi umum
         await db.chatMessages.add({
           sender: 'AI',
           text: aiResult.explanation,
@@ -79,21 +85,94 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onReportRequested 
     }
   };
 
-  const handleConfirmTransaction = async (msgId: number, transactionData: any) => {
-    try {
-      // Post transaksi ke General Ledger
-      const journalId = await postJournalEntry(transactionData);
-      
-      // Update pesan konfirmasi agar keterangannya berganti lunas/terposting
-      await db.chatMessages.update(msgId, {
-        cardType: 'TRANSACTION_SUCCESS',
-        text: `✅ **Transaksi Terposting!**\n\nJurnal berhasil dicatat di Core Ledger dengan ID: **${journalId}**.\n\n*Keterangan:* ${transactionData.description}`,
-      });
-      
-      // Tambahkan pesan sukses dari AI
+  // F-AS-08: Lensa AI (Upload Bukti Transaksi) - Simulasi OCR
+  const handleUploadImageClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setOcrProcessing(true);
+    
+    // Tampilkan pratinjau unggahan di chat
+    await db.chatMessages.add({
+      sender: 'USER',
+      text: `📷 [Mengunggah bukti transaksi: ${file.name}]`,
+      timestamp: new Date().toISOString(),
+    });
+
+    // Simulasi pemrosesan OCR 2.5 detik
+    setTimeout(async () => {
+      setOcrProcessing(false);
+      setIsLoading(true);
+
+      // Pilih teks simulasi berdasarkan nama berkas agar demo terasa sangat realistik
+      let ocrSimulatedText = 'Bayar langganan software Zoom senilai 250rb pakai Mandiri';
+      const fileNameLower = file.name.toLowerCase();
+
+      if (fileNameLower.includes('kopi') || fileNameLower.includes('arabika') || fileNameLower.includes('nota')) {
+        ocrSimulatedText = 'Beli 5 pack Biji Kopi Arabika seharga 40rb per pack tunai';
+      } else if (fileNameLower.includes('listrik') || fileNameLower.includes('pln') || fileNameLower.includes('struk')) {
+        ocrSimulatedText = 'Bayar tagihan listrik ruko 350rb pakai BCA';
+      } else if (fileNameLower.includes('susu') || fileNameLower.includes('uht')) {
+        ocrSimulatedText = 'Beli 10 pack Susu UHT 1L seharga 15rb per pack tunai';
+      }
+
       await db.chatMessages.add({
         sender: 'AI',
-        text: `Transaksi "${transactionData.description}" senilai Rp ${transactionData.lines.reduce((s: number, l: any) => s + l.debit, 0).toLocaleString('id-ID')} telah sukses dijurnal. Silakan cek tabel Jurnal Umum di panel kanan.`,
+        text: `🔍 **Lensa AI berhasil mengekstrak berkas!**\n\nHasil OCR menunjukkan nota belanja:\n*"${ocrSimulatedText}"*\n\nMemproses jurnal...`,
+        timestamp: new Date().toISOString(),
+      });
+
+      await processAiInput(ocrSimulatedText);
+    }, 2500);
+  };
+
+  const handleConfirmTransaction = async (msgId: number, transactionData: any) => {
+    try {
+      // 1. Post jurnal transaksi utama
+      const journalId = await postJournalEntry(transactionData);
+      
+      // 2. Hubungkan & Mutasikan Stok Persediaan (Fase 2) jika ada inventoryChanges
+      let stockSuccessMsg = '';
+      if (transactionData.inventoryChanges && transactionData.inventoryChanges.length > 0) {
+        for (const change of transactionData.inventoryChanges) {
+          if (change.type === 'MASUK') {
+            await purchaseProduct(
+              change.productId, 
+              change.qty, 
+              change.unitCost || 0, 
+              transactionData.date, 
+              journalId
+            );
+            const p = await db.products.get(change.productId);
+            stockSuccessMsg += `\n📦 Stok "${p?.name}" bertambah +${change.qty} unit (Average cost baru: Rp ${p?.averageCost.toLocaleString('id-ID')}).`;
+          } else if (change.type === 'KELUAR') {
+            // Lakukan penjualan dan kalkulasi HPP otomatis
+            const totalHpp = await sellProduct(
+              change.productId, 
+              change.qty, 
+              transactionData.date, 
+              journalId
+            );
+            const p = await db.products.get(change.productId);
+            stockSuccessMsg += `\n📦 Stok "${p?.name}" berkurang -${change.qty} unit. HPP otomatis senilai Rp ${totalHpp.toLocaleString('id-ID')} telah dijurnal.`;
+          }
+        }
+      }
+
+      // Update pesan konfirmasi
+      await db.chatMessages.update(msgId, {
+        cardType: 'TRANSACTION_SUCCESS',
+        text: `✅ **Transaksi Terposting!**\n\nJurnal berhasil dicatat dengan ID: **${journalId}**.\n\n*Keterangan:* ${transactionData.description}${stockSuccessMsg}`,
+      });
+      
+      // Tambahkan pesan sukses
+      await db.chatMessages.add({
+        sender: 'AI',
+        text: `Transaksi "${transactionData.description}" senilai Rp ${transactionData.lines.reduce((s: number, l: any) => s + l.debit, 0).toLocaleString('id-ID')} sukses dijurnal.${stockSuccessMsg ? '\n' + stockSuccessMsg : ''}`,
         timestamp: new Date().toISOString(),
       });
     } catch (err: any) {
@@ -131,11 +210,11 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onReportRequested 
               <div className="ai-interactive-card">
                 <div className="card-title">
                   <Sparkles size={16} className="text-secondary" style={{ color: 'var(--accent-secondary)' }} />
-                  <span>Draft Jurnal Otomatis</span>
+                  <span>Draft Jurnal & Stok</span>
                 </div>
                 
                 <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
-                  <strong>Deskripsi:</strong> {msg.cardData.description} <br />
+                  <strong>Keterangan:</strong> {msg.cardData.description} <br />
                   <strong>Tanggal:</strong> {msg.cardData.date}
                 </div>
 
@@ -158,6 +237,17 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onReportRequested 
                     </div>
                   ))}
                 </div>
+
+                {msg.cardData.inventoryChanges && msg.cardData.inventoryChanges.length > 0 && (
+                  <div style={{ fontSize: '11px', color: 'var(--accent-secondary)', padding: '6px 8px', background: 'rgba(6, 182, 212, 0.05)', borderRadius: '4px', marginBottom: '12px', border: '1px solid rgba(6, 182, 212, 0.15)' }}>
+                    🎯 <strong>Mutasi Stok Terdeteksi:</strong>
+                    {msg.cardData.inventoryChanges.map((change: any, idx: number) => (
+                      <div key={idx} style={{ marginTop: '2px' }}>
+                        - {change.type === 'MASUK' ? 'Beli' : 'Jual'} {change.qty} unit produk.
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <button
@@ -184,6 +274,14 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onReportRequested 
             </span>
           </div>
         ))}
+
+        {ocrProcessing && (
+          <div className="chat-bubble bubble-ai" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Camera size={16} style={{ animation: 'pulse 1.5s infinite', color: 'var(--accent-secondary)' }} />
+            <span>Lensa AI sedang mengekstrak struk belanja/nota dengan OCR...</span>
+          </div>
+        )}
+
         {isLoading && (
           <div className="chat-bubble bubble-ai" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Sparkles size={16} style={{ animation: 'spin 1.5s linear infinite', color: 'var(--accent-secondary)' }} />
@@ -201,10 +299,27 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onReportRequested 
             className="chat-input"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
-            placeholder="Catat transaksi atau minta laporan (misal: 'Jual kopi 50rb')..."
-            disabled={isLoading}
+            placeholder="Catat transaksi atau unggah nota..."
+            disabled={isLoading || ocrProcessing}
           />
-          <button type="submit" className="btn btn-primary btn-circle" disabled={isLoading || !inputValue.trim()}>
+          <input
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            ref={fileInputRef}
+            onChange={handleImageChange}
+          />
+          <button 
+            type="button" 
+            className="btn btn-secondary btn-circle" 
+            style={{ marginRight: '6px', background: 'transparent', border: 'none' }}
+            disabled={isLoading || ocrProcessing}
+            onClick={handleUploadImageClick}
+            title="Lensa AI - Unggah Nota"
+          >
+            <Camera size={18} style={{ color: 'var(--text-secondary)' }} />
+          </button>
+          <button type="submit" className="btn btn-primary btn-circle" disabled={isLoading || ocrProcessing || !inputValue.trim()}>
             <Send size={16} />
           </button>
         </form>

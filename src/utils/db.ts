@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie';
-import type { Account, JournalEntry, Contact, BankStatementItem } from '../types/ledger';
+import type { Account, JournalEntry, Contact, BankStatementItem, Product, InventoryLog } from '../types/ledger';
 
 // Interface untuk riwayat obrolan di Mode Asisten
 export interface ChatMessage {
@@ -18,15 +18,19 @@ class AkuntaDatabase extends Dexie {
   contacts!: Table<Contact, string>;
   bankStatements!: Table<BankStatementItem, string>;
   chatMessages!: Table<ChatMessage, number>;
+  products!: Table<Product, string>;
+  inventoryLogs!: Table<InventoryLog, string>;
 
   constructor() {
     super('AkuntaDatabase');
-    this.version(1).stores({
+    this.version(2).stores({
       accounts: 'code, name, type, normalBalance, parentCode',
       journals: 'id, date, isAnomaly',
       contacts: 'id, name, type',
       bankStatements: 'id, date, matchedJournalId',
       chatMessages: '++id, sender, timestamp',
+      products: 'id, name, sku',
+      inventoryLogs: 'id, productId, date, type',
     });
   }
 }
@@ -87,6 +91,20 @@ export async function initializeDatabase() {
       { id: 'st-04', date: '2026-06-23', description: 'PEMBAYARAN ZOOM INC', amount: -250000 },
     ];
     await db.bankStatements.bulkAdd(defaultStatements);
+
+    // Tambah produk inventaris default
+    const defaultProducts: Product[] = [
+      { id: 'prod-01', name: 'Biji Kopi Arabika', sku: 'KOPI-ARB', stockQty: 10, averageCost: 40000, sellingPrice: 60000 },
+      { id: 'prod-02', name: 'Suku UHT 1L', sku: 'MILK-UHT', stockQty: 20, averageCost: 15000, sellingPrice: 22000 },
+    ];
+    await db.products.bulkAdd(defaultProducts);
+
+    // Tambah log mutasi persediaan awal
+    const defaultInventoryLogs: InventoryLog[] = [
+      { id: 'log-01', productId: 'prod-01', date: '2026-06-20', type: 'MASUK', qty: 10, cost: 40000, reference: 'INIT' },
+      { id: 'log-02', productId: 'prod-02', date: '2026-06-20', type: 'MASUK', qty: 20, cost: 15000, reference: 'INIT' },
+    ];
+    await db.inventoryLogs.bulkAdd(defaultInventoryLogs);
 
     // Tambahkan sapaan awal dari AI di chat
     await db.chatMessages.add({

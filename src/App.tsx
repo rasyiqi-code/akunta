@@ -6,7 +6,7 @@ import { ChatInterface } from './components/AssistantMode/ChatInterface';
 import { LedgerDashboard } from './components/AccountantMode/LedgerDashboard';
 
 function App() {
-  const [activeTab, setActiveTab] = useState<'JURNAL' | 'BUKUBESAR' | 'LABARUGI' | 'NERACA' | 'PAJAK'>('JURNAL');
+  const [activeTab, setActiveTab] = useState<'JURNAL' | 'BUKUBESAR' | 'LABARUGI' | 'NERACA' | 'PAJAK' | 'PERSEDIAAN'>('JURNAL');
   const [isLightMode, setIsLightMode] = useState(false);
   const [isDbReady, setIsDbReady] = useState(false);
 
