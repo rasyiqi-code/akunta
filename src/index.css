@@ -847,3 +847,165 @@ body {
   transform: translateX(2px);
 }
 
+/* --- UI/UX PREMIUM ENHANCEMENTS --- */
+:root {
+  --glow-indigo: 0 0 15px rgba(79, 70, 229, 0.4);
+  --glow-emerald: 0 0 15px rgba(16, 185, 129, 0.4);
+  --glow-amber: 0 0 15px rgba(245, 158, 11, 0.4);
+  --glow-rose: 0 0 15px rgba(239, 68, 68, 0.4);
+  --glow-violet: 0 0 15px rgba(139, 92, 246, 0.4);
+}
+
+/* Glassmorphism Styles */
+.glass-panel {
+  background: rgba(22, 23, 30, 0.8) !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.07) !important;
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Hover Scale & Glowing transitions */
+.hover-scale {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.hover-scale:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.hover-glow-indigo:hover {
+  border-color: rgba(79, 70, 229, 0.4) !important;
+  box-shadow: var(--glow-indigo), 0 8px 24px rgba(79, 70, 229, 0.15);
+}
+
+.hover-glow-rose:hover {
+  border-color: rgba(239, 68, 68, 0.4) !important;
+  box-shadow: var(--glow-rose), 0 8px 24px rgba(239, 68, 68, 0.15);
+}
+
+.hover-glow-emerald:hover {
+  border-color: rgba(16, 185, 129, 0.4) !important;
+  box-shadow: var(--glow-emerald), 0 8px 24px rgba(16, 185, 129, 0.15);
+}
+
+.hover-glow-violet:hover {
+  border-color: rgba(139, 92, 246, 0.4) !important;
+  box-shadow: var(--glow-violet), 0 8px 24px rgba(139, 92, 246, 0.15);
+}
+
+/* Input Focus Glow */
+.focus-glow {
+  transition: all 0.2s ease-in-out;
+}
+.focus-glow:focus {
+  border-color: var(--accent-primary) !important;
+  box-shadow: 0 0 0 2px rgba(53, 132, 228, 0.25), 0 0 10px rgba(53, 132, 228, 0.3) !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+  outline: none;
+}
+
+/* Glowing Badges */
+.badge-glow {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 9999px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+.badge-glow-success {
+  background: rgba(16, 185, 129, 0.12);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.15);
+}
+
+.badge-glow-warning {
+  background: rgba(245, 158, 11, 0.12);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.15);
+}
+
+.badge-glow-danger {
+  background: rgba(239, 68, 68, 0.12);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.15);
+}
+
+.badge-glow-info {
+  background: rgba(59, 130, 246, 0.12);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.15);
+}
+
+/* Pulsing AI Glow */
+.glow-pulse-border {
+  position: relative;
+}
+.glow-pulse-border::after {
+  content: '';
+  position: absolute;
+  top: -1px; left: -1px; right: -1px; bottom: -1px;
+  border-radius: inherit;
+  border: 1px solid var(--accent-primary);
+  opacity: 0.5;
+  animation: glowPulse 2.5s infinite ease-in-out;
+  pointer-events: none;
+}
+
+@keyframes glowPulse {
+  0% {
+    box-shadow: 0 0 4px rgba(53, 132, 228, 0.2);
+    border-color: rgba(53, 132, 228, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 12px rgba(53, 132, 228, 0.6);
+    border-color: rgba(53, 132, 228, 0.7);
+  }
+  100% {
+    box-shadow: 0 0 4px rgba(53, 132, 228, 0.2);
+    border-color: rgba(53, 132, 228, 0.3);
+  }
+}
+
+/* Custom Scrollbars */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Premium modal overlays */
+.modal-overlay-premium {
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  background-color: rgba(10, 11, 15, 0.75) !important;
+}
+
+

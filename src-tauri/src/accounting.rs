@@ -1,5 +1,8 @@
 use rusqlite::{params, Connection};
-use crate::{SalesDocument, PurchaseDocument, Warehouse, StockTakeOrder, FixedAssetAdjustment};
+use crate::{
+    SalesDocument, SalesDocumentItem, PurchaseDocument, PurchaseDocumentItem,
+    Warehouse, StockTakeOrder, StockTakeItem, FixedAssetAdjustment
+};
 
 // Ambil semua dokumen penjualan beserta itemnya
 pub fn get_sales_documents(conn: &Connection) -> Result<Vec<SalesDocument>, String> {
@@ -7,45 +10,49 @@ pub fn get_sales_documents(conn: &Connection) -> Result<Vec<SalesDocument>, Stri
         "SELECT id, date, contact_id, type, status, reference_id, total_amount, dp_applied FROM sales_documents ORDER BY date DESC"
     ).map_err(|e| e.to_string())?;
 
-    let doc_iter = stmt.query_map([], |row| {
-        Ok(SalesDocument {
-            id: row.get(0)?,
-            date: row.get(1)?,
-            contact_id: row.get(2)?,
-            doc_type: row.get(3)?,
-            status: row.get(4)?,
-            reference_id: row.get(5)?,
-            total_amount: row.get(6)?,
-            dp_applied: row.get(7)?,
-            items: None,
+    let doc_iter = stmt
+        .query_map([], |row| {
+            Ok(SalesDocument {
+                id: row.get(0)?,
+                date: row.get(1)?,
+                contact_id: row.get(2)?,
+                doc_type: row.get(3)?,
+                status: row.get(4)?,
+                reference_id: row.get(5)?,
+                total_amount: row.get(6)?,
+                dp_applied: row.get(7)?,
+                items: None,
+            })
         })
-    }).map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?;
 
     let mut docs = Vec::new();
     for d_res in doc_iter {
         let mut doc = d_res.map_err(|e| e.to_string())?;
-        
+
         // Ambil item untuk dokumen ini
         let mut item_stmt = conn.prepare(
             "SELECT id, document_id, product_id, qty, price, discount FROM sales_document_items WHERE document_id = ?1"
         ).map_err(|e| e.to_string())?;
-        
-        let item_iter = item_stmt.query_map([&doc.id], |r| {
-            Ok(crate::SalesDocumentItem {
-                id: Some(r.get(0)?),
-                document_id: r.get(1)?,
-                product_id: r.get(2)?,
-                qty: r.get(3)?,
-                price: r.get(4)?,
-                discount: r.get(5)?,
+
+        let item_iter = item_stmt
+            .query_map([&doc.id], |r| {
+                Ok(crate::SalesDocumentItem {
+                    id: Some(r.get(0)?),
+                    document_id: r.get(1)?,
+                    product_id: r.get(2)?,
+                    qty: r.get(3)?,
+                    price: r.get(4)?,
+                    discount: r.get(5)?,
+                })
             })
-        }).map_err(|e| e.to_string())?;
-        
+            .map_err(|e| e.to_string())?;
+
         let mut items = Vec::new();
         for i in item_iter {
             items.push(i.map_err(|e| e.to_string())?);
         }
-        
+
         doc.items = Some(items);
         docs.push(doc);
     }
@@ -133,13 +140,13 @@ pub fn create_sales_document(conn: &Connection, doc: SalesDocument) -> Result<St
         if let Some(items) = &doc.items {
             for item in items {
                 // Ambil info produk (average_cost & current qty)
-                let mut prod_stmt = conn.prepare(
-                    "SELECT average_cost, stock_qty FROM products WHERE id = ?1"
-                ).map_err(|e| e.to_string())?;
-                
-                let (avg_cost, current_qty): (f64, f64) = prod_stmt.query_row([&item.product_id], |row| {
-                    Ok((row.get(0)?, row.get(1)?))
-                }).map_err(|e| e.to_string())?;
+                let mut prod_stmt = conn
+                    .prepare("SELECT average_cost, stock_qty FROM products WHERE id = ?1")
+                    .map_err(|e| e.to_string())?;
+
+                let (avg_cost, current_qty): (f64, f64) = prod_stmt
+                    .query_row([&item.product_id], |row| Ok((row.get(0)?, row.get(1)?)))
+                    .map_err(|e| e.to_string())?;
 
                 let item_cost = avg_cost * item.qty;
                 total_cost += item_cost;
@@ -149,7 +156,8 @@ pub fn create_sales_document(conn: &Connection, doc: SalesDocument) -> Result<St
                 conn.execute(
                     "UPDATE products SET stock_qty = ?1 WHERE id = ?2",
                     params![new_qty, item.product_id],
-                ).map_err(|e| e.to_string())?;
+                )
+                .map_err(|e| e.to_string())?;
 
                 // Buat inventory log mutasi keluar
                 let log_id = format!("LOG-OUT-{}", doc.id);
@@ -185,44 +193,48 @@ pub fn get_purchase_documents(conn: &Connection) -> Result<Vec<PurchaseDocument>
         "SELECT id, date, contact_id, type, status, reference_id, total_amount, dp_applied FROM purchase_documents ORDER BY date DESC"
     ).map_err(|e| e.to_string())?;
 
-    let doc_iter = stmt.query_map([], |row| {
-        Ok(PurchaseDocument {
-            id: row.get(0)?,
-            date: row.get(1)?,
-            contact_id: row.get(2)?,
-            doc_type: row.get(3)?,
-            status: row.get(4)?,
-            reference_id: row.get(5)?,
-            total_amount: row.get(6)?,
-            dp_applied: row.get(7)?,
-            items: None,
+    let doc_iter = stmt
+        .query_map([], |row| {
+            Ok(PurchaseDocument {
+                id: row.get(0)?,
+                date: row.get(1)?,
+                contact_id: row.get(2)?,
+                doc_type: row.get(3)?,
+                status: row.get(4)?,
+                reference_id: row.get(5)?,
+                total_amount: row.get(6)?,
+                dp_applied: row.get(7)?,
+                items: None,
+            })
         })
-    }).map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?;
 
     let mut docs = Vec::new();
     for d_res in doc_iter {
         let mut doc = d_res.map_err(|e| e.to_string())?;
-        
+
         let mut item_stmt = conn.prepare(
             "SELECT id, document_id, product_id, qty, price, discount FROM purchase_document_items WHERE document_id = ?1"
         ).map_err(|e| e.to_string())?;
-        
-        let item_iter = item_stmt.query_map([&doc.id], |r| {
-            Ok(crate::PurchaseDocumentItem {
-                id: Some(r.get(0)?),
-                document_id: r.get(1)?,
-                product_id: r.get(2)?,
-                qty: r.get(3)?,
-                price: r.get(4)?,
-                discount: r.get(5)?,
+
+        let item_iter = item_stmt
+            .query_map([&doc.id], |r| {
+                Ok(crate::PurchaseDocumentItem {
+                    id: Some(r.get(0)?),
+                    document_id: r.get(1)?,
+                    product_id: r.get(2)?,
+                    qty: r.get(3)?,
+                    price: r.get(4)?,
+                    discount: r.get(5)?,
+                })
             })
-        }).map_err(|e| e.to_string())?;
-        
+            .map_err(|e| e.to_string())?;
+
         let mut items = Vec::new();
         for i in item_iter {
             items.push(i.map_err(|e| e.to_string())?);
         }
-        
+
         doc.items = Some(items);
         docs.push(doc);
     }
@@ -231,7 +243,10 @@ pub fn get_purchase_documents(conn: &Connection) -> Result<Vec<PurchaseDocument>
 }
 
 // Buat Dokumen Pembelian Baru (jika INVOICE, buat Jurnal Otomatis & Mutasi Persediaan)
-pub fn create_purchase_document(conn: &Connection, doc: PurchaseDocument) -> Result<String, String> {
+pub fn create_purchase_document(
+    conn: &Connection,
+    doc: PurchaseDocument,
+) -> Result<String, String> {
     conn.execute(
         "INSERT INTO purchase_documents (id, date, contact_id, type, status, reference_id, total_amount, dp_applied) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
         params![doc.id, doc.date, doc.contact_id, doc.doc_type, doc.status, doc.reference_id, doc.total_amount, doc.dp_applied],
@@ -299,13 +314,13 @@ pub fn create_purchase_document(conn: &Connection, doc: PurchaseDocument) -> Res
         // Update Stok Produk & Hitung Average Cost
         if let Some(items) = &doc.items {
             for item in items {
-                let mut prod_stmt = conn.prepare(
-                    "SELECT average_cost, stock_qty FROM products WHERE id = ?1"
-                ).map_err(|e| e.to_string())?;
-                
-                let (old_avg, old_qty): (f64, f64) = prod_stmt.query_row([&item.product_id], |row| {
-                    Ok((row.get(0)?, row.get(1)?))
-                }).map_err(|e| e.to_string())?;
+                let mut prod_stmt = conn
+                    .prepare("SELECT average_cost, stock_qty FROM products WHERE id = ?1")
+                    .map_err(|e| e.to_string())?;
+
+                let (old_avg, old_qty): (f64, f64) = prod_stmt
+                    .query_row([&item.product_id], |row| Ok((row.get(0)?, row.get(1)?)))
+                    .map_err(|e| e.to_string())?;
 
                 // Hitung Moving Average Cost baru
                 let new_qty = old_qty + item.qty;
@@ -318,7 +333,8 @@ pub fn create_purchase_document(conn: &Connection, doc: PurchaseDocument) -> Res
                 conn.execute(
                     "UPDATE products SET stock_qty = ?1, average_cost = ?2 WHERE id = ?3",
                     params![new_qty, new_avg, item.product_id],
-                ).map_err(|e| e.to_string())?;
+                )
+                .map_err(|e| e.to_string())?;
 
                 // Buat inventory log mutasi masuk
                 let log_id = format!("LOG-IN-{}", doc.id);
@@ -335,13 +351,17 @@ pub fn create_purchase_document(conn: &Connection, doc: PurchaseDocument) -> Res
 
 // Ambil Daftar Gudang
 pub fn get_warehouses(conn: &Connection) -> Result<Vec<Warehouse>, String> {
-    let mut stmt = conn.prepare("SELECT id, name FROM warehouses").map_err(|e| e.to_string())?;
-    let iter = stmt.query_map([], |row| {
-        Ok(Warehouse {
-            id: row.get(0)?,
-            name: row.get(1)?,
+    let mut stmt = conn
+        .prepare("SELECT id, name FROM warehouses")
+        .map_err(|e| e.to_string())?;
+    let iter = stmt
+        .query_map([], |row| {
+            Ok(Warehouse {
+                id: row.get(0)?,
+                name: row.get(1)?,
+            })
         })
-    }).map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?;
 
     let mut list = Vec::new();
     for item in iter {
@@ -352,36 +372,42 @@ pub fn get_warehouses(conn: &Connection) -> Result<Vec<Warehouse>, String> {
 
 // Ambil Laporan/Daftar Stock Opname
 pub fn get_stock_takes(conn: &Connection) -> Result<Vec<StockTakeOrder>, String> {
-    let mut stmt = conn.prepare("SELECT id, date, status FROM stock_take_orders ORDER BY date DESC").map_err(|e| e.to_string())?;
-    let order_iter = stmt.query_map([], |row| {
-        Ok(StockTakeOrder {
-            id: row.get(0)?,
-            date: row.get(1)?,
-            status: row.get(2)?,
-            items: None,
+    let mut stmt = conn
+        .prepare("SELECT id, date, status FROM stock_take_orders ORDER BY date DESC")
+        .map_err(|e| e.to_string())?;
+    let order_iter = stmt
+        .query_map([], |row| {
+            Ok(StockTakeOrder {
+                id: row.get(0)?,
+                date: row.get(1)?,
+                status: row.get(2)?,
+                items: None,
+            })
         })
-    }).map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?;
 
     let mut list = Vec::new();
     for ord_res in order_iter {
         let mut ord = ord_res.map_err(|e| e.to_string())?;
-        
+
         let mut item_stmt = conn.prepare(
             "SELECT id, stock_take_id, product_id, system_qty, physical_qty, diff_qty, cost FROM stock_take_items WHERE stock_take_id = ?1"
         ).map_err(|e| e.to_string())?;
-        
-        let item_iter = item_stmt.query_map([&ord.id], |r| {
-            Ok(crate::StockTakeItem {
-                id: Some(r.get(0)?),
-                stock_take_id: r.get(1)?,
-                product_id: r.get(2)?,
-                system_qty: r.get(3)?,
-                physical_qty: r.get(4)?,
-                diff_qty: r.get(5)?,
-                cost: r.get(6)?,
+
+        let item_iter = item_stmt
+            .query_map([&ord.id], |r| {
+                Ok(crate::StockTakeItem {
+                    id: Some(r.get(0)?),
+                    stock_take_id: r.get(1)?,
+                    product_id: r.get(2)?,
+                    system_qty: r.get(3)?,
+                    physical_qty: r.get(4)?,
+                    diff_qty: r.get(5)?,
+                    cost: r.get(6)?,
+                })
             })
-        }).map_err(|e| e.to_string())?;
-        
+            .map_err(|e| e.to_string())?;
+
         let mut items = Vec::new();
         for i in item_iter {
             items.push(i.map_err(|e| e.to_string())?);
@@ -398,7 +424,8 @@ pub fn create_stock_take(conn: &Connection, order: StockTakeOrder) -> Result<Str
     conn.execute(
         "INSERT INTO stock_take_orders (id, date, status) VALUES (?1, ?2, ?3)",
         params![order.id, order.date, order.status],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     if let Some(items) = &order.items {
         for item in items {
@@ -412,9 +439,14 @@ pub fn create_stock_take(conn: &Connection, order: StockTakeOrder) -> Result<Str
                 conn.execute(
                     "UPDATE products SET stock_qty = ?1 WHERE id = ?2",
                     params![item.physical_qty, item.product_id],
-                ).map_err(|e| e.to_string())?;
+                )
+                .map_err(|e| e.to_string())?;
 
-                let log_type = if item.diff_qty > 0.0 { "ADJUSTMENT" } else { "ADJUSTMENT" };
+                let log_type = if item.diff_qty > 0.0 {
+                    "ADJUSTMENT"
+                } else {
+                    "ADJUSTMENT"
+                };
                 let log_id = format!("LOG-ADJ-{}", order.id);
                 conn.execute(
                     "INSERT INTO inventory_logs (id, product_id, date, type, qty, cost, reference, warehouse_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'w-01')",
@@ -426,7 +458,7 @@ pub fn create_stock_take(conn: &Connection, order: StockTakeOrder) -> Result<Str
 
     // Jika COMPLETED, buat Jurnal Penyesuaian ke COA Beban
     if order.status == "COMPLETED" {
-        let mut total_adjustment_cost = 0.0;
+        let mut total_adjustment_cost: f64 = 0.0;
         if let Some(items) = &order.items {
             for item in items {
                 // Selisih nilai moneter = diff_qty * cost
@@ -474,15 +506,22 @@ pub fn create_stock_take(conn: &Connection, order: StockTakeOrder) -> Result<Str
 }
 
 // Disposisi Aset Tetap (Pelepasan Aset)
-pub fn dispose_fixed_asset(conn: &Connection, asset_id: &str, disposal_date: &str, disposal_value: f64) -> Result<String, String> {
+pub fn dispose_fixed_asset(
+    conn: &Connection,
+    asset_id: &str,
+    disposal_date: &str,
+    disposal_value: f64,
+) -> Result<String, String> {
     // 1. Ambil info aset
-    let mut stmt = conn.prepare(
-        "SELECT name, cost, accumulated_depreciation FROM fixed_assets WHERE id = ?1"
-    ).map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare("SELECT name, cost, accumulated_depreciation FROM fixed_assets WHERE id = ?1")
+        .map_err(|e| e.to_string())?;
 
-    let (name, cost, acc_dep): (String, f64, f64) = stmt.query_row([asset_id], |row| {
-        Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-    }).map_err(|e| e.to_string())?;
+    let (name, cost, acc_dep): (String, f64, f64) = stmt
+        .query_row([asset_id], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        })
+        .map_err(|e| e.to_string())?;
 
     // 2. Hitung Laba/Rugi pelepasan aset
     // Nilai Buku = Cost - Akumulasi Penyusutan

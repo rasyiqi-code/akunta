@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { 
   FileSpreadsheet, Database, Play, CheckCircle, 
-  AlertTriangle, Upload, Download, Plus, FileText, X
+  AlertTriangle, Upload, Download, Plus, Sparkles, X
 } from 'lucide-react';
 import { db, DEFAULT_ACCOUNTS } from '../../utils/db';
 import { invoke } from '@tauri-apps/api/core';
@@ -603,7 +603,7 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
                 </thead>
                 <tbody>
                   {journals.map((j) => (
-                    <tr key={j.id}>
+                    <tr key={j.id} className="cmd-menu-item">
                       <td style={{ verticalAlign: 'top', width: '100px' }}>{j.date}</td>
                       <td style={{ verticalAlign: 'top', width: '90px', fontFamily: 'monospace' }}>{j.id}</td>
                       <td>
@@ -664,7 +664,7 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
                 </thead>
                 <tbody>
                   {accounts.map(a => (
-                    <tr key={a.code}>
+                    <tr key={a.code} className="cmd-menu-item">
                       <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{a.code}</td>
                       <td>{a.name}</td>
                       <td>
@@ -767,7 +767,7 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
                     </thead>
                     <tbody>
                       {products.map(p => (
-                        <tr key={p.id}>
+                        <tr key={p.id} className="cmd-menu-item">
                           <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{p.sku}</td>
                           <td>{p.name}</td>
                           <td className="amount-col" style={{ color: p.stockQty < 5 ? 'var(--accent-danger)' : 'var(--text-primary)' }}>
@@ -801,7 +801,7 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
                       {inventoryLogs.map(log => {
                         const prod = products.find(p => p.id === log.productId);
                         return (
-                          <tr key={log.id}>
+                          <tr key={log.id} className="cmd-menu-item">
                             <td>{log.date}</td>
                             <td>{prod ? `${prod.name} (${prod.sku})` : 'Produk tidak dikenal'}</td>
                             <td>
@@ -930,12 +930,12 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
               <div style={{ marginBottom: '16px' }}>
                 <div style={{ fontWeight: 700, borderBottom: '1px solid var(--border-color)', paddingBottom: '4px', marginBottom: '8px' }}>PENDAPATAN</div>
                 {plReport.revenue.map((r: any) => (
-                  <div key={r.code} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 12px', fontSize: '13px' }}>
+                  <div key={r.code} className="cmd-menu-item" style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 12px', fontSize: '13px', borderRadius: '4px' }}>
                     <span>{r.code} - {r.name}</span>
                     <span style={{ fontFamily: 'monospace' }}>Rp {r.amount.toLocaleString('id-ID')}</span>
                   </div>
                 ))}
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', fontWeight: 600, background: 'rgba(255,255,255,0.02)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', fontWeight: 600, background: 'rgba(255,255,255,0.02)', borderRadius: '4px' }}>
                   <span>Total Pendapatan</span>
                   <span style={{ fontFamily: 'monospace' }}>Rp {plReport.totalRevenue.toLocaleString('id-ID')}</span>
                 </div>
@@ -945,12 +945,12 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
               <div style={{ marginBottom: '24px' }}>
                 <div style={{ fontWeight: 700, borderBottom: '1px solid var(--border-color)', paddingBottom: '4px', marginBottom: '8px' }}>BEBAN OPERASIONAL</div>
                 {plReport.expenses.map((e: any) => (
-                  <div key={e.code} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 12px', fontSize: '13px' }}>
+                  <div key={e.code} className="cmd-menu-item" style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 12px', fontSize: '13px', borderRadius: '4px' }}>
                     <span>{e.code} - {e.name}</span>
                     <span style={{ fontFamily: 'monospace' }}>Rp {e.amount.toLocaleString('id-ID')}</span>
                   </div>
                 ))}
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', fontWeight: 600, background: 'rgba(255,255,255,0.02)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', fontWeight: 600, background: 'rgba(255,255,255,0.02)', borderRadius: '4px' }}>
                   <span>Total Beban</span>
                   <span style={{ fontFamily: 'monospace' }}>Rp {plReport.totalExpenses.toLocaleString('id-ID')}</span>
                 </div>
@@ -1099,7 +1099,7 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
                     fixedAssets.map(asset => {
                       const bookValue = asset.cost - asset.accumulatedDepreciation;
                       return (
-                        <tr key={asset.id}>
+                        <tr key={asset.id} className="cmd-menu-item">
                           <td><strong>{asset.name}</strong></td>
                           <td>{asset.purchaseDate}</td>
                           <td style={{ textAlign: 'right' }}>Rp {asset.cost.toLocaleString('id-ID')}</td>
@@ -1289,35 +1289,35 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
 
       {/* Modal Jurnal Manual */}
       {showJurnalModal && (
-        <div className="modal-overlay">
-          <div className="modal-container">
-            <div className="modal-header">
-              <h3 style={{ fontFamily: 'var(--font-display)', fontWeight: 600 }}>Catat Jurnal Manual</h3>
-              <button style={{ background: 'transparent', border: 'none', color: 'white', cursor: 'pointer' }} onClick={() => setShowJurnalModal(false)}>
-                <X size={20} />
+        <div className="modal-overlay modal-overlay-premium" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
+          <div className="glass-panel" style={{ padding: '24px', borderRadius: '12px', width: '550px', display: 'flex', flexDirection: 'column', gap: '16px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px' }}>
+              <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '700', color: 'white' }}>Catat Jurnal Manual</h3>
+              <button style={{ background: 'transparent', border: 'none', color: '#9ca3af', cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => setShowJurnalModal(false)}>
+                <X size={18} className="hover-scale" />
               </button>
             </div>
-            <form onSubmit={handleSaveJurnalManual} className="modal-body">
+            <form onSubmit={handleSaveJurnalManual} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div style={{ display: 'flex', gap: '12px' }}>
                 <div className="form-group" style={{ flex: 1 }}>
                   <label className="form-label">Tanggal</label>
-                  <input type="date" className="form-input" value={jurnalDate} onChange={e => setJurnalDate(e.target.value)} required />
+                  <input type="date" className="form-input focus-glow" style={{ background: '#12131a', border: '1px solid rgba(255,255,255,0.08)', color: 'white', padding: '6px 8px', borderRadius: '6px' }} value={jurnalDate} onChange={e => setJurnalDate(e.target.value)} required />
                 </div>
                 <div className="form-group" style={{ flex: 2 }}>
                   <label className="form-label">Keterangan Jurnal</label>
-                  <input type="text" className="form-input" placeholder="contoh: Penyesuaian akhir bulan" value={jurnalDesc} onChange={e => setJurnalDesc(e.target.value)} required />
+                  <input type="text" className="form-input focus-glow" style={{ background: '#12131a', border: '1px solid rgba(255,255,255,0.08)', color: 'white', padding: '6px 8px', borderRadius: '6px' }} placeholder="contoh: Penyesuaian akhir bulan" value={jurnalDesc} onChange={e => setJurnalDesc(e.target.value)} required />
                 </div>
               </div>
 
-              <div style={{ marginBottom: '12px', fontWeight: 600, fontSize: '12px', color: 'var(--text-secondary)' }}>
+              <div style={{ marginBottom: '4px', fontWeight: 600, fontSize: '11px', color: 'var(--text-secondary)' }}>
                 Rincian Akun (Debit/Kredit harus seimbang)
               </div>
 
               {jurnalLines.map((line, index) => (
-                <div key={index} style={{ display: 'flex', gap: '8px', marginBottom: '8px', alignItems: 'center' }}>
+                <div key={index} style={{ display: 'flex', gap: '8px', marginBottom: '4px', alignItems: 'center' }}>
                   <select 
-                    className="form-input" 
-                    style={{ flex: 2 }}
+                    className="form-input focus-glow" 
+                    style={{ flex: 2, background: '#12131a', border: '1px solid rgba(255,255,255,0.08)', color: 'white', padding: '6px 8px', borderRadius: '6px' }}
                     value={line.accountCode} 
                     onChange={e => {
                       const newLines = [...jurnalLines];
@@ -1333,8 +1333,8 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
                   </select>
                   <input 
                     type="number" 
-                    className="form-input" 
-                    style={{ flex: 1, textAlign: 'right' }} 
+                    className="form-input focus-glow" 
+                    style={{ flex: 1, textAlign: 'right', background: '#12131a', border: '1px solid rgba(255,255,255,0.08)', color: 'white', padding: '6px 8px', borderRadius: '6px' }} 
                     placeholder="Debit"
                     value={line.debit || ''}
                     onChange={e => {
@@ -1346,8 +1346,8 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
                   />
                   <input 
                     type="number" 
-                    className="form-input" 
-                    style={{ flex: 1, textAlign: 'right' }} 
+                    className="form-input focus-glow" 
+                    style={{ flex: 1, textAlign: 'right', background: '#12131a', border: '1px solid rgba(255,255,255,0.08)', color: 'white', padding: '6px 8px', borderRadius: '6px' }} 
                     placeholder="Kredit"
                     value={line.credit || ''}
                     onChange={e => {
@@ -1360,13 +1360,13 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
                 </div>
               ))}
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '16px' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setJurnalLines([...jurnalLines, { accountCode: '', debit: 0, credit: 0 }])}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '12px' }}>
+                <button type="button" className="btn btn-secondary hover-scale" onClick={() => setJurnalLines([...jurnalLines, { accountCode: '', debit: 0, credit: 0 }])}>
                   + Tambah Baris
                 </button>
                 <div style={{ display: 'flex', gap: '8px' }}>
-                  <button type="button" className="btn btn-secondary" onClick={() => setShowJurnalModal(false)}>Batal</button>
-                  <button type="submit" className="btn btn-primary">Simpan Jurnal</button>
+                  <button type="button" className="btn btn-secondary hover-scale" onClick={() => setShowJurnalModal(false)}>Batal</button>
+                  <button type="submit" className="btn btn-primary hover-scale">Simpan Jurnal</button>
                 </div>
               </div>
             </form>
@@ -1376,30 +1376,30 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
 
       {/* Modal Tambah Produk (Fase 2) */}
       {showProductModal && (
-        <div className="modal-overlay">
-          <div className="modal-container" style={{ maxWidth: '400px' }}>
-            <div className="modal-header">
-              <h3 style={{ fontFamily: 'var(--font-display)', fontWeight: 600 }}>Tambah Produk Baru</h3>
-              <button style={{ background: 'transparent', border: 'none', color: 'white', cursor: 'pointer' }} onClick={() => setShowProductModal(false)}>
-                <X size={20} />
+        <div className="modal-overlay modal-overlay-premium" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
+          <div className="glass-panel" style={{ padding: '24px', borderRadius: '12px', width: '400px', display: 'flex', flexDirection: 'column', gap: '16px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px' }}>
+              <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '700', color: 'white' }}>Tambah Produk Baru</h3>
+              <button style={{ background: 'transparent', border: 'none', color: '#9ca3af', cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => setShowProductModal(false)}>
+                <X size={18} className="hover-scale" />
               </button>
             </div>
-            <form onSubmit={handleSaveProduct} className="modal-body">
+            <form onSubmit={handleSaveProduct} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div className="form-group">
                 <label className="form-label">Nama Produk</label>
-                <input type="text" className="form-input" placeholder="contoh: Kopi Arabika Lintong" value={newProductName} onChange={e => setNewProductName(e.target.value)} required />
+                <input type="text" className="form-input focus-glow" style={{ background: '#12131a', border: '1px solid rgba(255,255,255,0.08)', color: 'white', padding: '6px 8px', borderRadius: '6px' }} placeholder="contoh: Kopi Arabika Lintong" value={newProductName} onChange={e => setNewProductName(e.target.value)} required />
               </div>
               <div className="form-group">
                 <label className="form-label">SKU Produk</label>
-                <input type="text" className="form-input" placeholder="contoh: KOPI-LNTG" value={newProductSku} onChange={e => setNewProductSku(e.target.value)} required />
+                <input type="text" className="form-input focus-glow" style={{ background: '#12131a', border: '1px solid rgba(255,255,255,0.08)', color: 'white', padding: '6px 8px', borderRadius: '6px' }} placeholder="contoh: KOPI-LNTG" value={newProductSku} onChange={e => setNewProductSku(e.target.value)} required />
               </div>
               <div className="form-group">
                 <label className="form-label">Harga Jual per Unit (Rp)</label>
-                <input type="number" className="form-input" placeholder="contoh: 65000" value={newProductPrice || ''} onChange={e => setNewProductPrice(parseFloat(e.target.value) || 0)} required />
+                <input type="number" className="form-input focus-glow" style={{ background: '#12131a', border: '1px solid rgba(255,255,255,0.08)', color: 'white', padding: '6px 8px', borderRadius: '6px' }} placeholder="contoh: 65000" value={newProductPrice || ''} onChange={e => setNewProductPrice(parseFloat(e.target.value) || 0)} required />
               </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowProductModal(false)}>Batal</button>
-                <button type="submit" className="btn btn-primary">Simpan Produk</button>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '12px' }}>
+                <button type="button" className="btn btn-secondary hover-scale" onClick={() => setShowProductModal(false)}>Batal</button>
+                <button type="submit" className="btn btn-primary hover-scale">Simpan Produk</button>
               </div>
             </form>
           </div>
@@ -1408,18 +1408,18 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
 
       {/* Modal Stock Adjustment (Fase 2) */}
       {showAdjustModal && (
-        <div className="modal-overlay">
-          <div className="modal-container" style={{ maxWidth: '400px' }}>
-            <div className="modal-header">
-              <h3 style={{ fontFamily: 'var(--font-display)', fontWeight: 600 }}>Stock Opname / Adjustment</h3>
-              <button style={{ background: 'transparent', border: 'none', color: 'white', cursor: 'pointer' }} onClick={() => setShowAdjustModal(false)}>
-                <X size={20} />
+        <div className="modal-overlay modal-overlay-premium" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
+          <div className="glass-panel" style={{ padding: '24px', borderRadius: '12px', width: '400px', display: 'flex', flexDirection: 'column', gap: '16px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px' }}>
+              <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '700', color: 'white' }}>Stock Opname / Adjustment</h3>
+              <button style={{ background: 'transparent', border: 'none', color: '#9ca3af', cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => setShowAdjustModal(false)}>
+                <X size={18} className="hover-scale" />
               </button>
             </div>
-            <form onSubmit={handleSaveStockAdjustment} className="modal-body">
+            <form onSubmit={handleSaveStockAdjustment} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div className="form-group">
                 <label className="form-label">Pilih Produk</label>
-                <select className="form-input" value={adjustProductId} onChange={e => setAdjustProductId(e.target.value)} required>
+                <select className="form-input focus-glow" style={{ background: '#12131a', border: '1px solid rgba(255,255,255,0.08)', color: 'white', padding: '6px 8px', borderRadius: '6px' }} value={adjustProductId} onChange={e => setAdjustProductId(e.target.value)} required>
                   <option value="">Pilih...</option>
                   {products.map(p => (
                     <option key={p.id} value={p.id}>{p.name} ({p.sku}) - Sisa Stok: {p.stockQty} unit</option>
@@ -1428,15 +1428,15 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
               </div>
               <div className="form-group">
                 <label className="form-label">Jumlah Stok Riil yang Baru</label>
-                <input type="number" className="form-input" placeholder="contoh: 12" value={adjustQty || ''} onChange={e => setAdjustQty(parseInt(e.target.value) || 0)} required />
+                <input type="number" className="form-input focus-glow" style={{ background: '#12131a', border: '1px solid rgba(255,255,255,0.08)', color: 'white', padding: '6px 8px', borderRadius: '6px' }} placeholder="contoh: 12" value={adjustQty || ''} onChange={e => setAdjustQty(parseInt(e.target.value) || 0)} required />
               </div>
               <div className="form-group">
                 <label className="form-label">Alasan Penyesuaian</label>
-                <input type="text" className="form-input" placeholder="contoh: Stock Opname Juni 2026 / Barang Rusak" value={adjustReason} onChange={e => setAdjustReason(e.target.value)} required />
+                <input type="text" className="form-input focus-glow" style={{ background: '#12131a', border: '1px solid rgba(255,255,255,0.08)', color: 'white', padding: '6px 8px', borderRadius: '6px' }} placeholder="contoh: Stock Opname Juni 2026 / Barang Rusak" value={adjustReason} onChange={e => setAdjustReason(e.target.value)} required />
               </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowAdjustModal(false)}>Batal</button>
-                <button type="submit" className="btn btn-primary">Post Penyesuaian</button>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '12px' }}>
+                <button type="button" className="btn btn-secondary hover-scale" onClick={() => setShowAdjustModal(false)}>Batal</button>
+                <button type="submit" className="btn btn-primary hover-scale">Post Penyesuaian</button>
               </div>
             </form>
           </div>
@@ -1445,26 +1445,26 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
 
       {/* Modal Stock Opname Fisik Baru */}
       {showNewStockTakeModal && (
-        <div className="modal-overlay">
-          <div className="modal-container" style={{ maxWidth: '600px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
-            <div className="modal-header">
-              <h3 style={{ fontFamily: 'var(--font-display)', fontWeight: 600 }}>Stock Opname Fisik Baru</h3>
-              <button style={{ background: 'transparent', border: 'none', color: 'white', cursor: 'pointer' }} onClick={() => setShowNewStockTakeModal(false)}>
-                <X size={20} />
+        <div className="modal-overlay modal-overlay-premium" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
+          <div className="glass-panel" style={{ padding: '24px', borderRadius: '12px', width: '600px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', gap: '16px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px' }}>
+              <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '700', color: 'white' }}>Stock Opname Fisik Baru</h3>
+              <button style={{ background: 'transparent', border: 'none', color: '#9ca3af', cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => setShowNewStockTakeModal(false)}>
+                <X size={18} className="hover-scale" />
               </button>
             </div>
-            <form onSubmit={handleSaveNewStockTake} className="modal-body" style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <form onSubmit={handleSaveNewStockTake} className="custom-scrollbar" style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
                 Isi kuantitas riil hasil perhitungan fisik di gudang. Selisih akan menjurnal otomatis.
               </div>
-              <div style={{ flex: 1, overflowY: 'auto', maxHeight: '50vh' }}>
+              <div style={{ flex: 1, overflowY: 'auto', maxHeight: '45vh' }}>
                 <table className="data-table" style={{ width: '100%' }}>
                   <thead>
-                    <tr>
-                      <th>Nama Barang</th>
-                      <th style={{ textAlign: 'right' }}>Stok Sistem</th>
-                      <th style={{ textAlign: 'right', width: '120px' }}>Stok Fisik</th>
-                      <th style={{ textAlign: 'right' }}>Selisih</th>
+                    <tr style={{ background: 'rgba(255,255,255,0.03)' }}>
+                      <th style={{ padding: '8px' }}>Nama Barang</th>
+                      <th style={{ textAlign: 'right', padding: '8px' }}>Stok Sistem</th>
+                      <th style={{ textAlign: 'right', width: '120px', padding: '8px' }}>Stok Fisik</th>
+                      <th style={{ textAlign: 'right', padding: '8px' }}>Selisih</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1472,14 +1472,14 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
                       const prodName = products.find(p => p.id === item.productId)?.name || item.productId;
                       const diff = item.physicalQty - item.systemQty;
                       return (
-                        <tr key={item.productId}>
-                          <td>{prodName}</td>
-                          <td style={{ textAlign: 'right' }}>{item.systemQty} Unit</td>
-                          <td style={{ textAlign: 'right' }}>
+                        <tr key={item.productId} className="cmd-menu-item">
+                          <td style={{ padding: '8px' }}>{prodName}</td>
+                          <td style={{ textAlign: 'right', padding: '8px' }}>{item.systemQty} Unit</td>
+                          <td style={{ textAlign: 'right', padding: '8px' }}>
                             <input
                               type="number"
-                              className="form-input"
-                              style={{ width: '90px', textAlign: 'right', display: 'inline-block' }}
+                              className="form-input focus-glow"
+                              style={{ width: '90px', textAlign: 'right', display: 'inline-block', background: '#12131a', border: '1px solid rgba(255,255,255,0.08)', color: 'white', padding: '4px 6px', borderRadius: '4px' }}
                               value={item.physicalQty}
                               onChange={e => {
                                 const val = parseFloat(e.target.value) || 0;
@@ -1489,7 +1489,7 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
                               }}
                             />
                           </td>
-                          <td style={{ textAlign: 'right', color: diff === 0 ? 'var(--text-primary)' : diff > 0 ? 'var(--accent-success)' : 'var(--accent-danger)', fontWeight: 600 }}>
+                          <td style={{ textAlign: 'right', padding: '8px', color: diff === 0 ? 'var(--text-primary)' : diff > 0 ? 'var(--accent-success)' : 'var(--accent-danger)', fontWeight: 600 }}>
                             {diff > 0 ? `+${diff}` : diff}
                           </td>
                         </tr>
@@ -1498,9 +1498,9 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
                   </tbody>
                 </table>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '12px' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowNewStockTakeModal(false)}>Batal</button>
-                <button type="submit" className="btn btn-primary">Post Hasil Opname</button>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '12px', marginTop: '4px' }}>
+                <button type="button" className="btn btn-secondary hover-scale" onClick={() => setShowNewStockTakeModal(false)}>Batal</button>
+                <button type="submit" className="btn btn-primary hover-scale">Post Hasil Opname</button>
               </div>
             </form>
           </div>
@@ -1509,36 +1509,36 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
 
       {/* Modal Pelepasan Aset (Disposal) */}
       {showDisposalModal && selectedAssetForDisposal && (
-        <div className="modal-overlay">
-          <div className="modal-container" style={{ maxWidth: '400px' }}>
-            <div className="modal-header">
-              <h3 style={{ fontFamily: 'var(--font-display)', fontWeight: 600 }}>Pelepasan / Penjualan Aset</h3>
-              <button style={{ background: 'transparent', border: 'none', color: 'white', cursor: 'pointer' }} onClick={() => {
+        <div className="modal-overlay modal-overlay-premium" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
+          <div className="glass-panel" style={{ padding: '24px', borderRadius: '12px', width: '400px', display: 'flex', flexDirection: 'column', gap: '16px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px' }}>
+              <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '700', color: 'white' }}>Pelepasan / Penjualan Aset</h3>
+              <button style={{ background: 'transparent', border: 'none', color: '#9ca3af', cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => {
                 setShowDisposalModal(false);
                 setSelectedAssetForDisposal(null);
               }}>
-                <X size={20} />
+                <X size={18} className="hover-scale" />
               </button>
             </div>
-            <form onSubmit={handlePostDisposal} className="modal-body">
-              <div style={{ marginBottom: '12px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+            <form onSubmit={handlePostDisposal} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.02)', padding: '10px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.04)' }}>
                 Aset: <strong>{selectedAssetForDisposal.name}</strong><br/>
                 Nilai Buku: <strong>Rp {(selectedAssetForDisposal.cost - selectedAssetForDisposal.accumulatedDepreciation).toLocaleString('id-ID')}</strong>
               </div>
               <div className="form-group">
                 <label className="form-label">Tanggal Pelepasan</label>
-                <input type="date" className="form-input" value={disposalDate} onChange={e => setDisposalDate(e.target.value)} required />
+                <input type="date" className="form-input focus-glow" style={{ background: '#12131a', border: '1px solid rgba(255,255,255,0.08)', color: 'white', padding: '6px 8px', borderRadius: '6px' }} value={disposalDate} onChange={e => setDisposalDate(e.target.value)} required />
               </div>
               <div className="form-group">
                 <label className="form-label">Nilai Jual / Pelepasan (Rp)</label>
-                <input type="number" className="form-input" placeholder="contoh: 5000000 (isi 0 jika dibuang)" value={disposalValue} onChange={e => setDisposalValue(parseFloat(e.target.value) || 0)} required />
+                <input type="number" className="form-input focus-glow" style={{ background: '#12131a', border: '1px solid rgba(255,255,255,0.08)', color: 'white', padding: '6px 8px', borderRadius: '6px' }} placeholder="contoh: 5000000 (isi 0 jika dibuang)" value={disposalValue} onChange={e => setDisposalValue(parseFloat(e.target.value) || 0)} required />
               </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => {
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '12px' }}>
+                <button type="button" className="btn btn-secondary hover-scale" onClick={() => {
                   setShowDisposalModal(false);
                   setSelectedAssetForDisposal(null);
                 }}>Batal</button>
-                <button type="submit" style={{ background: 'var(--accent-danger)', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: '500' }}>Post Pelepasan</button>
+                <button type="submit" style={{ background: 'var(--accent-danger)', color: 'white', border: 'none', padding: '6px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '11px', fontWeight: '600', boxShadow: '0 4px 12px rgba(225, 28, 40, 0.25)' }} className="hover-scale">Post Pelepasan</button>
               </div>
             </form>
           </div>
@@ -1547,40 +1547,40 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
 
       {/* Modal Tambah Aset Tetap (Fase 2) */}
       {showAssetModal && (
-        <div className="modal-overlay">
-          <div className="modal-container" style={{ maxWidth: '400px' }}>
-            <div className="modal-header">
-              <h3 style={{ fontFamily: 'var(--font-display)', fontWeight: 600 }}>Tambah Aset Tetap Baru</h3>
-              <button style={{ background: 'transparent', border: 'none', color: 'white', cursor: 'pointer' }} onClick={() => setShowAssetModal(false)}>
-                <X size={20} />
+        <div className="modal-overlay modal-overlay-premium" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
+          <div className="glass-panel" style={{ padding: '24px', borderRadius: '12px', width: '420px', display: 'flex', flexDirection: 'column', gap: '16px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px' }}>
+              <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '700', color: 'white' }}>Tambah Aset Tetap Baru</h3>
+              <button style={{ background: 'transparent', border: 'none', color: '#9ca3af', cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => setShowAssetModal(false)}>
+                <X size={18} className="hover-scale" />
               </button>
             </div>
-            <form onSubmit={handleAddFixedAsset} className="modal-body">
+            <form onSubmit={handleAddFixedAsset} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div className="form-group">
                 <label className="form-label">Nama Aset Tetap</label>
-                <input type="text" className="form-input" placeholder="contoh: Mesin Espresso, Komputer Kasir" value={assetName} onChange={e => setAssetName(e.target.value)} required />
+                <input type="text" className="form-input focus-glow" style={{ background: '#12131a', border: '1px solid rgba(255,255,255,0.08)', color: 'white', padding: '6px 8px', borderRadius: '6px' }} placeholder="contoh: Mesin Espresso, Komputer Kasir" value={assetName} onChange={e => setAssetName(e.target.value)} required />
               </div>
               <div className="form-group">
                 <label className="form-label">Tanggal Pembelian</label>
-                <input type="date" className="form-input" value={assetPurchaseDate} onChange={e => setAssetPurchaseDate(e.target.value)} required />
+                <input type="date" className="form-input focus-glow" style={{ background: '#12131a', border: '1px solid rgba(255,255,255,0.08)', color: 'white', padding: '6px 8px', borderRadius: '6px' }} value={assetPurchaseDate} onChange={e => setAssetPurchaseDate(e.target.value)} required />
               </div>
               <div className="form-group">
                 <label className="form-label">Harga Perolehan (Rp)</label>
-                <input type="number" className="form-input" placeholder="contoh: 15000000" value={assetCost || ''} onChange={e => setAssetCost(parseFloat(e.target.value) || 0)} required />
+                <input type="number" className="form-input focus-glow" style={{ background: '#12131a', border: '1px solid rgba(255,255,255,0.08)', color: 'white', padding: '6px 8px', borderRadius: '6px' }} placeholder="contoh: 15000000" value={assetCost || ''} onChange={e => setAssetCost(parseFloat(e.target.value) || 0)} required />
               </div>
-              <div style={{ display: 'flex', gap: '8px' }}>
+              <div style={{ display: 'flex', gap: '10px' }}>
                 <div className="form-group" style={{ flex: 1 }}>
-                  <label className="form-label">Umur Ekonomis (Tahun)</label>
-                  <input type="number" className="form-input" placeholder="contoh: 5" value={assetLifeYears || ''} onChange={e => setAssetLifeYears(parseInt(e.target.value) || 0)} required />
+                  <label className="form-label">Umur Ekonomis (Thn)</label>
+                  <input type="number" className="form-input focus-glow" style={{ background: '#12131a', border: '1px solid rgba(255,255,255,0.08)', color: 'white', padding: '6px 8px', borderRadius: '6px' }} placeholder="contoh: 5" value={assetLifeYears || ''} onChange={e => setAssetLifeYears(parseInt(e.target.value) || 0)} required />
                 </div>
                 <div className="form-group" style={{ flex: 1 }}>
-                  <label className="form-label">Nilai Residu / Sisa (Rp)</label>
-                  <input type="number" className="form-input" placeholder="contoh: 3000000" value={assetSalvage || ''} onChange={e => setAssetSalvage(parseFloat(e.target.value) || 0)} required />
+                  <label className="form-label">Residu / Sisa (Rp)</label>
+                  <input type="number" className="form-input focus-glow" style={{ background: '#12131a', border: '1px solid rgba(255,255,255,0.08)', color: 'white', padding: '6px 8px', borderRadius: '6px' }} placeholder="contoh: 3000000" value={assetSalvage || ''} onChange={e => setAssetSalvage(parseFloat(e.target.value) || 0)} required />
                 </div>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowAssetModal(false)}>Batal</button>
-                <button type="submit" className="btn btn-primary">Simpan Aset</button>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '12px' }}>
+                <button type="button" className="btn btn-secondary hover-scale" onClick={() => setShowAssetModal(false)}>Batal</button>
+                <button type="submit" className="btn btn-primary hover-scale">Simpan Aset</button>
               </div>
             </form>
           </div>
@@ -1589,22 +1589,22 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
 
       {/* Modal Diagnosis Laporan */}
       {showDiagnosisModal && (
-        <div className="modal-overlay">
-          <div className="modal-container" style={{ maxWidth: '500px' }}>
-            <div className="modal-header">
-              <h3 style={{ fontFamily: 'var(--font-display)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <FileText size={18} style={{ color: 'var(--accent-secondary)' }} />
+        <div className="modal-overlay modal-overlay-premium" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
+          <div className="glass-panel glow-pulse-border" style={{ padding: '24px', borderRadius: '12px', width: '500px', maxWidth: '90%', display: 'flex', flexDirection: 'column', gap: '16px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px' }}>
+              <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '700', color: 'white', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Sparkles size={16} style={{ color: 'var(--accent-primary)' }} />
                 <span>Diagnosis AI Akunta</span>
               </h3>
-              <button style={{ background: 'transparent', border: 'none', color: 'white', cursor: 'pointer' }} onClick={() => setShowDiagnosisModal(false)}>
-                <X size={20} />
+              <button style={{ background: 'transparent', border: 'none', color: '#9ca3af', cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => setShowDiagnosisModal(false)}>
+                <X size={18} className="hover-scale" />
               </button>
             </div>
-            <div className="modal-body" style={{ fontSize: '13px', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
+            <div className="custom-scrollbar" style={{ fontSize: '12.5px', lineHeight: '1.6', whiteSpace: 'pre-wrap', color: '#e4e4e7', overflowY: 'auto', maxHeight: '50vh', paddingRight: '4px' }}>
               {diagnosisText}
               {isDiagnosing && (
                 <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
-                  <div style={{ width: '24px', height: '24px', border: '3px solid rgba(255,255,255,0.1)', borderTopColor: 'var(--accent-secondary)', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+                  <div style={{ width: '24px', height: '24px', border: '3px solid rgba(255,255,255,0.1)', borderTopColor: 'var(--accent-primary)', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
                 </div>
               )}
             </div>
