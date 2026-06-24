@@ -2,13 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { 
   FileSpreadsheet, Database, Play, CheckCircle, 
-  AlertTriangle, Upload, Download, Plus, Sparkles, X
+  AlertTriangle, Upload, Download, Plus, Sparkles, X, Trash2
 } from 'lucide-react';
 import { db, DEFAULT_ACCOUNTS } from '../../utils/db';
 import { invoke } from '@tauri-apps/api/core';
 import { 
   generateProfitLoss, generateBalanceSheet, postJournalEntry, 
-  exportToBackupString, importFromBackupString 
+  exportToBackupString, importFromBackupString, resetDatabase 
 } from '../../utils/ledgerEngine';
 import { adjustProductStock } from '../../utils/inventoryEngine';
 import { runMonthlyDepreciation, addFixedAsset, calculateMonthlyDepreciation } from '../../utils/fixedAssetEngine';
@@ -160,9 +160,7 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
       setPlReport(pl);
       setBsReport(bs);
     };
-    if (journals.length > 0) {
-      fetchReports();
-    }
+    fetchReports();
   }, [journals]);
 
   // Ambil data Pajak jika jurnal berubah
@@ -171,10 +169,22 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
       const summary = await getTaxSummary();
       setTaxSummary(summary);
     };
-    if (journals.length > 0) {
-      fetchTax();
-    }
+    fetchTax();
   }, [journals]);
+
+  const handleResetDatabase = async () => {
+    if (!window.confirm("Apakah Anda yakin ingin mereset seluruh database? Semua data transaksi, produk, aset tetap, dan log akan dihapus dan dikembalikan ke data awal (default).")) {
+      return;
+    }
+    try {
+      await resetDatabase();
+      alert("Database berhasil direset!");
+      fetchData();
+    } catch (err) {
+      console.error("Gagal mereset database:", err);
+      alert("Gagal mereset database: " + err);
+    }
+  };
 
 
   const saveNativeFile = async (content: string, filename: string) => {
@@ -1260,7 +1270,7 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
                     <Download size={12} />
                     <span>Unduh Backup</span>
                   </button>
-                  <label className="btn btn-secondary" style={{ cursor: 'pointer' }}>
+                  <label className="btn btn-secondary" style={{ cursor: 'pointer', margin: 0 }}>
                     <Upload size={12} />
                     <span>Unggah Backup</span>
                     <input 
@@ -1270,6 +1280,26 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
                       onChange={handleUploadBackup} 
                     />
                   </label>
+                  <button 
+                    className="btn btn-danger" 
+                    onClick={handleResetDatabase}
+                    style={{ 
+                      background: 'var(--accent-danger)', 
+                      color: 'white', 
+                      border: 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: '6px 12px',
+                      borderRadius: 'var(--radius-sm)',
+                      cursor: 'pointer',
+                      fontSize: '11px',
+                      fontWeight: 600
+                    }}
+                  >
+                    <Trash2 size={12} />
+                    <span>Reset Data</span>
+                  </button>
                 </div>
               </div>
             </div>

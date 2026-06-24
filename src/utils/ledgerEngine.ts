@@ -160,3 +160,8 @@ export async function generateCashFlow(): Promise<CashFlowReport> {
     };
   }
 }
+
+export async function resetDatabase(): Promise<void> {
+  return await invoke<void>('reset_database_rust');
+}
+

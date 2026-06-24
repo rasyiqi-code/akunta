@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Plus, 
-  Trash2, CreditCard, Users, Award
+  Trash2, CreditCard, Users, Award, X
 } from 'lucide-react';
 import { db } from '../../utils/db';
 import { generateId } from '../../utils/ledgerEngine';
@@ -23,10 +23,40 @@ export const SalesManager: React.FC = () => {
   ]);
   const [dpApplied, setDpApplied] = useState(0);
 
+  // Customer Modal State
+  const [showCustomerModal, setShowCustomerModal] = useState(false);
+  const [newCustomerName, setNewCustomerName] = useState('');
+
   // Komisi & Target Sales (Brainstorming features visual)
   const [salesCommission, setSalesCommission] = useState<number>(0);
   const [salesTarget] = useState<number>(100000000); // Rp 100 Jt
   const [salesAchieved, setSalesAchieved] = useState<number>(0);
+
+  const handleAddCustomer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCustomerName.trim()) return;
+
+    const newId = generateId('c');
+    const newContact = {
+      id: newId,
+      name: newCustomerName,
+      type: 'CUSTOMER' as const
+    };
+
+    try {
+      await db.contacts.add(newContact);
+      setNewCustomerName('');
+      setShowCustomerModal(false);
+      
+      const event = new CustomEvent('db-update');
+      window.dispatchEvent(event);
+      
+      fetchData();
+    } catch (err) {
+      console.error(err);
+      alert('Gagal menambahkan pelanggan baru.');
+    }
+  };
 
   const fetchData = async () => {
     try {
@@ -247,28 +277,53 @@ export const SalesManager: React.FC = () => {
             </button>
           ))}
         </div>
-        <button
-          onClick={() => setShowModal(true)}
-          style={{
-            background: 'linear-gradient(135deg, #4f46e5, #6366f1)',
-            color: 'white',
-            border: 'none',
-            padding: '6px 14px',
-            borderRadius: '6px',
-            fontSize: '11px',
-            fontWeight: '600',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            boxShadow: '0 4px 12px rgba(79, 70, 229, 0.25)',
-            transition: 'all 0.2s ease'
-          }}
-          className="hover-scale"
-        >
-          <Plus size={13} />
-          Buat Transaksi Penjualan
-        </button>
+        {activeSubTab === 'PELANGGAN' ? (
+          <button
+            onClick={() => setShowCustomerModal(true)}
+            style={{
+              background: 'linear-gradient(135deg, #10b981, #059669)',
+              color: 'white',
+              border: 'none',
+              padding: '6px 14px',
+              borderRadius: '6px',
+              fontSize: '11px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 4px 12px rgba(16, 185, 129, 0.25)',
+              transition: 'all 0.2s ease'
+            }}
+            className="hover-scale"
+          >
+            <Plus size={13} />
+            Tambah Pelanggan
+          </button>
+        ) : (
+          <button
+            onClick={() => setShowModal(true)}
+            style={{
+              background: 'linear-gradient(135deg, #4f46e5, #6366f1)',
+              color: 'white',
+              border: 'none',
+              padding: '6px 14px',
+              borderRadius: '6px',
+              fontSize: '11px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 4px 12px rgba(79, 70, 229, 0.25)',
+              transition: 'all 0.2s ease'
+            }}
+            className="hover-scale"
+          >
+            <Plus size={13} />
+            Buat Transaksi Penjualan
+          </button>
+        )}
       </div>
 
       {/* TAMPILAN PELANGGAN */}
@@ -521,6 +576,49 @@ export const SalesManager: React.FC = () => {
                 >Simpan Transaksi</button>
               </div>
 
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Tambah Pelanggan */}
+      {showCustomerModal && (
+        <div className="modal-overlay modal-overlay-premium" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
+          <div className="glass-panel" style={{ padding: '24px', borderRadius: '12px', width: '400px', display: 'flex', flexDirection: 'column', gap: '16px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px' }}>
+              <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '700', color: 'white' }}>Tambah Pelanggan Baru</h3>
+              <button style={{ background: 'transparent', border: 'none', color: '#9ca3af', cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => setShowCustomerModal(false)}>
+                <X size={18} className="hover-scale" />
+              </button>
+            </div>
+            <form onSubmit={handleAddCustomer} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div className="form-group">
+                <label className="form-label">Nama Pelanggan</label>
+                <input 
+                  type="text" 
+                  className="form-input focus-glow" 
+                  style={{ background: '#12131a', border: '1px solid rgba(255,255,255,0.08)', color: 'white', padding: '6px 8px', borderRadius: '6px', width: '100%', boxSizing: 'border-box' }} 
+                  placeholder="Nama Lengkap / Instansi" 
+                  value={newCustomerName} 
+                  onChange={e => setNewCustomerName(e.target.value)} 
+                  required 
+                  autoFocus
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '12px', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '14px' }}>
+                <button 
+                  type="button" 
+                  onClick={() => setShowCustomerModal(false)} 
+                  style={{ background: 'transparent', border: 'none', color: '#a1a1aa', fontSize: '11px', cursor: 'pointer', padding: '6px 12px', fontWeight: '500' }}
+                  className="hover-scale"
+                >Batal</button>
+                <button 
+                  type="submit" 
+                  style={{ background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', color: 'white', fontSize: '11px', cursor: 'pointer', padding: '6px 18px', borderRadius: '6px', fontWeight: '600', boxShadow: '0 4px 12px rgba(16, 185, 129, 0.25)' }}
+                  className="hover-scale"
+                >Simpan</button>
+              </div>
             </form>
           </div>
         </div>

@@ -207,7 +207,7 @@ fn migrate_schema(conn: &Connection) -> std::result::Result<(), String> {
     Ok(())
 }
 
-fn seed_default_data(conn: &Connection) -> std::result::Result<(), String> {
+pub fn seed_default_data(conn: &Connection) -> std::result::Result<(), String> {
     // 1. Cek & Seed Accounts
     let count_accounts: i64 = conn
         .query_row("SELECT COUNT(*) FROM accounts", [], |r| r.get(0))

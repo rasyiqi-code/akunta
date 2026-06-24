@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   ShoppingBag, Plus, 
-  Trash2, Users, Landmark
+  Trash2, Users, Landmark, X
 } from 'lucide-react';
 import { db } from '../../utils/db';
 import { generateId } from '../../utils/ledgerEngine';
@@ -23,9 +23,39 @@ export const PurchaseManager: React.FC = () => {
   ]);
   const [dpApplied, setDpApplied] = useState(0);
 
+  // Vendor Modal State
+  const [showVendorModal, setShowVendorModal] = useState(false);
+  const [newVendorName, setNewVendorName] = useState('');
+
   // Perintah Pembayaran (Payment Order / Approval Checklist)
   const [pendingPayments, setPendingPayments] = useState<number>(0);
   const [totalSpent, setTotalSpent] = useState<number>(0);
+
+  const handleAddVendor = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newVendorName.trim()) return;
+
+    const newId = generateId('v');
+    const newContact = {
+      id: newId,
+      name: newVendorName,
+      type: 'VENDOR' as const
+    };
+
+    try {
+      await db.contacts.add(newContact);
+      setNewVendorName('');
+      setShowVendorModal(false);
+      
+      const event = new CustomEvent('db-update');
+      window.dispatchEvent(event);
+      
+      fetchData();
+    } catch (err) {
+      console.error(err);
+      alert('Gagal menambahkan pemasok baru.');
+    }
+  };
 
   const fetchData = async () => {
     try {
@@ -241,28 +271,53 @@ export const PurchaseManager: React.FC = () => {
             </button>
           ))}
         </div>
-        <button
-          onClick={() => setShowModal(true)}
-          style={{
-            background: 'linear-gradient(135deg, #e11d48, #f43f5e)',
-            color: 'white',
-            border: 'none',
-            padding: '6px 14px',
-            borderRadius: '6px',
-            fontSize: '11px',
-            fontWeight: '600',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            boxShadow: '0 4px 12px rgba(225, 29, 72, 0.25)',
-            transition: 'all 0.2s ease'
-          }}
-          className="hover-scale"
-        >
-          <Plus size={13} />
-          Buat Transaksi Pembelian
-        </button>
+        {activeSubTab === 'PEMASOK' ? (
+          <button
+            onClick={() => setShowVendorModal(true)}
+            style={{
+              background: 'linear-gradient(135deg, #10b981, #059669)',
+              color: 'white',
+              border: 'none',
+              padding: '6px 14px',
+              borderRadius: '6px',
+              fontSize: '11px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 4px 12px rgba(16, 185, 129, 0.25)',
+              transition: 'all 0.2s ease'
+            }}
+            className="hover-scale"
+          >
+            <Plus size={13} />
+            Tambah Pemasok
+          </button>
+        ) : (
+          <button
+            onClick={() => setShowModal(true)}
+            style={{
+              background: 'linear-gradient(135deg, #e11d48, #f43f5e)',
+              color: 'white',
+              border: 'none',
+              padding: '6px 14px',
+              borderRadius: '6px',
+              fontSize: '11px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 4px 12px rgba(225, 29, 72, 0.25)',
+              transition: 'all 0.2s ease'
+            }}
+            className="hover-scale"
+          >
+            <Plus size={13} />
+            Buat Transaksi Pembelian
+          </button>
+        )}
       </div>
 
       {/* TAMPILAN PEMASOK */}
@@ -514,6 +569,49 @@ export const PurchaseManager: React.FC = () => {
                 >Simpan Transaksi</button>
               </div>
 
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Tambah Pemasok */}
+      {showVendorModal && (
+        <div className="modal-overlay modal-overlay-premium" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
+          <div className="glass-panel" style={{ padding: '24px', borderRadius: '12px', width: '400px', display: 'flex', flexDirection: 'column', gap: '16px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px' }}>
+              <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '700', color: 'white' }}>Tambah Pemasok Baru</h3>
+              <button style={{ background: 'transparent', border: 'none', color: '#9ca3af', cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => setShowVendorModal(false)}>
+                <X size={18} className="hover-scale" />
+              </button>
+            </div>
+            <form onSubmit={handleAddVendor} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div className="form-group">
+                <label className="form-label">Nama Pemasok</label>
+                <input 
+                  type="text" 
+                  className="form-input focus-glow" 
+                  style={{ background: '#12131a', border: '1px solid rgba(255,255,255,0.08)', color: 'white', padding: '6px 8px', borderRadius: '6px', width: '100%', boxSizing: 'border-box' }} 
+                  placeholder="Nama Lengkap / Instansi" 
+                  value={newVendorName} 
+                  onChange={e => setNewVendorName(e.target.value)} 
+                  required 
+                  autoFocus
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '12px', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '14px' }}>
+                <button 
+                  type="button" 
+                  onClick={() => setShowVendorModal(false)} 
+                  style={{ background: 'transparent', border: 'none', color: '#a1a1aa', fontSize: '11px', cursor: 'pointer', padding: '6px 12px', fontWeight: '500' }}
+                  className="hover-scale"
+                >Batal</button>
+                <button 
+                  type="submit" 
+                  style={{ background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', color: 'white', fontSize: '11px', cursor: 'pointer', padding: '6px 18px', borderRadius: '6px', fontWeight: '600', boxShadow: '0 4px 12px rgba(16, 185, 129, 0.25)' }}
+                  className="hover-scale"
+                >Simpan</button>
+              </div>
             </form>
           </div>
         </div>

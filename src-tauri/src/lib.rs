@@ -2482,6 +2482,83 @@ fn adjust_fixed_asset_rust(state: tauri::State<'_, DbState>, adj_json: String) -
     accounting::adjust_fixed_asset(&conn, adj)
 }
 
+#[tauri::command]
+fn get_contacts_rust(state: tauri::State<'_, DbState>) -> Result<String, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare("SELECT id, name, type FROM contacts")
+        .map_err(|e| format!("Gagal mempersiapkan query contacts: {}", e))?;
+    let contacts_iter = stmt.query_map([], |row| {
+        Ok(Contact {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            contact_type: row.get(2)?,
+        })
+    }).map_err(|e| format!("Gagal memetakan query contacts: {}", e))?;
+
+    let mut contacts = Vec::new();
+    for contact in contacts_iter {
+        contacts.push(contact.map_err(|e| e.to_string())?);
+    }
+
+    serde_json::to_string(&contacts).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn add_contact_rust(app_handle: tauri::AppHandle, state: tauri::State<'_, DbState>, contact_json: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let contact: Contact = serde_json::from_str(&contact_json).map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO contacts (id, name, type) VALUES (?1, ?2, ?3)",
+        rusqlite::params![contact.id, contact.name, contact.contact_type],
+    ).map_err(|e| format!("Gagal menambahkan kontak ke database: {}", e))?;
+    
+    let _ = app_handle.emit("db-update", "contacts");
+    Ok(())
+}
+
+#[tauri::command]
+fn reset_database_rust(app_handle: tauri::AppHandle, state: tauri::State<'_, DbState>) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    
+    // Clear all tables
+    let tables = vec![
+        "fixed_asset_adjustments",
+        "stock_take_items",
+        "stock_take_orders",
+        "purchase_document_items",
+        "purchase_documents",
+        "sales_document_items",
+        "sales_documents",
+        "warehouses",
+        "chat_messages",
+        "fixed_assets",
+        "inventory_logs",
+        "products",
+        "bank_statements",
+        "contacts",
+        "journal_lines",
+        "journals",
+        "accounts"
+    ];
+    
+    for table in tables {
+        let query = format!("DELETE FROM {}", table);
+        conn.execute(&query, [])
+            .map_err(|e| format!("Gagal menghapus data tabel {}: {}", table, e))?;
+    }
+    
+    // Reset sequence auto-increment
+    let _ = conn.execute("DELETE FROM sqlite_sequence", []);
+    
+    // Seed default data
+    db::seed_default_data(&conn)?;
+    
+    // Emit ke all listeners
+    let _ = app_handle.emit("db-update", "all");
+    
+    Ok(())
+}
+
 // ==========================================
 // ENTRY POINT RUN & ROUTING HANDLER
 // ==========================================
@@ -2547,7 +2624,10 @@ pub fn run() {
             get_stock_takes_rust,
             create_stock_take_rust,
             dispose_fixed_asset_rust,
-            adjust_fixed_asset_rust
+            adjust_fixed_asset_rust,
+            get_contacts_rust,
+            add_contact_rust,
+            reset_database_rust
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

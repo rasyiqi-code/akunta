@@ -181,13 +181,18 @@ export const db = {
 
   contacts: {
     toArray: async (): Promise<Contact[]> => {
-      // Mengambil kontak jika perlu, dummy untuk demo
-      return [
-        { id: 'c-01', name: 'Umum / Tunai', type: 'CUSTOMER' },
-        { id: 'c-02', name: 'PT Sejahtera Mulia', type: 'CUSTOMER' },
-        { id: 'v-01', name: 'Supplier Kopi Indonesia', type: 'VENDOR' },
-        { id: 'v-02', name: 'PLN Persero', type: 'VENDOR' },
-      ];
+      try {
+        const res = await invoke<string>('get_contacts_rust');
+        return JSON.parse(res);
+      } catch (err) {
+        console.error('Error fetching contacts from Rust SQLite:', err);
+        return [];
+      }
+    },
+    add: async (contact: Contact): Promise<void> => {
+      await invoke<void>('add_contact_rust', {
+        contactJson: JSON.stringify(contact)
+      });
     }
   },
 
