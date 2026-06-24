@@ -3,6 +3,7 @@ import { listen } from '@tauri-apps/api/event';
 import { TrendingUp, Wallet, AlertTriangle, Info, BellRing } from 'lucide-react';
 import { db } from '../../utils/db';
 import { getAccountBalances, generateProfitLoss } from '../../utils/ledgerEngine';
+import { analyzeReceivablesFIFO, getCriticalStockProducts, ReceivableAlert } from '../../utils/dashboardEngine';
 
 export const WarRoom: React.FC = () => {
   const [cashInToday, setCashInToday] = useState(0);
@@ -12,7 +13,7 @@ export const WarRoom: React.FC = () => {
   
   // State untuk melacak data produk kritis dan alert piutang
   const [criticalProducts, setCriticalProducts] = useState<any[]>([]);
-  const [receivablesAlerts, setReceivablesAlerts] = useState<{ type: 'RED' | 'YELLOW'; text: string; id: string }[]>([]);
+  const [receivablesAlerts, setReceivablesAlerts] = useState<ReceivableAlert[]>([]);
 
   // Reaktif terhadap perubahan database jurnal via React State
   const [journals, setJournals] = useState<any[]>([]);
@@ -26,118 +27,20 @@ export const WarRoom: React.FC = () => {
     return 'Selamat malam';
   };
 
-  // Fungsi memeriksa stok produk kritis (< 5 unit)
-  const fetchProductsAndCheckStock = async () => {
-    try {
-      const productList = await db.products.toArray();
-      const critical = productList.filter(p => p.stockQty < 5);
-      setCriticalProducts(critical);
-    } catch (err) {
-      console.error('Gagal mengambil data produk untuk War Room:', err);
-    }
-  };
-
-  // Fungsi menganalisis piutang usaha (akun 1104) secara FIFO aging
-  const analyzeReceivables = (journalList: any[]) => {
-    // Dapatkan semua baris jurnal untuk akun 1104 (Piutang Usaha)
-    // Urutkan jurnal dari tanggal terlama ke terbaru (FIFO)
-    const sortedJournals = [...journalList].sort(
-      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-    );
+  // Memperbarui notifikasi stok dan piutang dari engine eksternal
+  const updateDashboardAnalysis = async (journalList: any[]) => {
+    const recAlerts = analyzeReceivablesFIFO(journalList);
+    setReceivablesAlerts(recAlerts);
     
-    interface Receivable {
-      id: string;
-      date: string;
-      description: string;
-      debit: number;
-      remaining: number;
-    }
-    
-    const debitEntries: Receivable[] = [];
-    let totalCredit = 0;
-
-    for (const j of sortedJournals) {
-      if (!j.lines) continue;
-      for (const line of j.lines) {
-        if (line.accountCode === '1104') {
-          if (line.debit > 0) {
-            debitEntries.push({
-              id: j.id,
-              date: j.date,
-              description: j.description,
-              debit: line.debit,
-              remaining: line.debit
-            });
-          }
-          if (line.credit > 0) {
-            totalCredit += line.credit;
-          }
-        }
-      }
-    }
-
-    // Alokasikan total pelunasan piutang secara FIFO
-    let tempCredit = totalCredit;
-    for (const entry of debitEntries) {
-      if (tempCredit <= 0) break;
-      if (tempCredit >= entry.remaining) {
-        tempCredit -= entry.remaining;
-        entry.remaining = 0;
-      } else {
-        entry.remaining -= tempCredit;
-        tempCredit = 0;
-      }
-    }
-
-    // Filter piutang aktif yang masih memiliki sisa saldo (remaining > 0)
-    const activeReceivables = debitEntries.filter(e => e.remaining > 0);
-    
-    // Hitung aging jatuh tempo (Termin Net 30 hari)
-    const today = new Date();
-    today.setHours(0, 0, 0, 0); // Reset jam untuk kalkulasi hari bersih
-    const alertsList: { type: 'RED' | 'YELLOW'; text: string; id: string }[] = [];
-
-    activeReceivables.forEach((rec, idx) => {
-      const txDate = new Date(rec.date);
-      const dueDate = new Date(txDate);
-      dueDate.setDate(dueDate.getDate() + 30); // Tambah 30 hari jatuh tempo
-      
-      const diffTime = today.getTime() - dueDate.getTime();
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); // positif jika terlewat
-
-      if (diffDays > 7) {
-        alertsList.push({
-          id: `rec-critical-${rec.id}-${idx}`,
-          type: 'RED',
-          text: `🚨 **Piutang Kritis:** Tagihan dari **"${rec.description}"** sebesar Rp ${rec.remaining.toLocaleString('id-ID')} telah menunggak ${diffDays} hari melewati jatuh tempo.`
-        });
-      } else if (diffDays >= 0 && diffDays <= 7) {
-        alertsList.push({
-          id: `rec-due-${rec.id}-${idx}`,
-          type: 'YELLOW',
-          text: `⚠️ **Piutang Jatuh Tempo:** Tagihan **"${rec.description}"** sebesar Rp ${rec.remaining.toLocaleString('id-ID')} telah lewat jatuh tempo ${diffDays === 0 ? 'hari ini' : `${diffDays} hari`}.`
-        });
-      } else {
-        const daysToDue = Math.abs(diffDays);
-        if (daysToDue <= 3) {
-          alertsList.push({
-            id: `rec-warning-${rec.id}-${idx}`,
-            type: 'YELLOW',
-            text: `⏳ **Piutang Dekat Tempo:** Tagihan **"${rec.description}"** sebesar Rp ${rec.remaining.toLocaleString('id-ID')} akan jatuh tempo dalam ${daysToDue} hari.`
-          });
-        }
-      }
-    });
-
-    setReceivablesAlerts(alertsList);
+    const critProds = await getCriticalStockProducts();
+    setCriticalProducts(critProds);
   };
 
   const fetchJournals = async () => {
     try {
       const list = await db.journals.toArray();
       setJournals(list);
-      analyzeReceivables(list);
-      await fetchProductsAndCheckStock();
+      await updateDashboardAnalysis(list);
     } catch (err) {
       console.error('Gagal memuat jurnal untuk War Room:', err);
     }
@@ -361,4 +264,5 @@ export const WarRoom: React.FC = () => {
     </div>
   );
 };
+
 
