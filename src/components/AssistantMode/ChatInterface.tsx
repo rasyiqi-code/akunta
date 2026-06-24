@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Send, Sparkles, Check, X, Camera } from 'lucide-react';
+import { Send, Sparkles, Check, X, Camera, FileSpreadsheet, Play } from 'lucide-react';
 import { db, DEFAULT_ACCOUNTS } from '../../utils/db';
-import { parseInputWithGemini } from '../../utils/gemini';
-import { postJournalEntry } from '../../utils/ledgerEngine';
+import { parseInputWithGemini, getNarrativeAnalysis } from '../../utils/gemini';
+import { postJournalEntry, generateProfitLoss, generateBalanceSheet } from '../../utils/ledgerEngine';
 import { purchaseProduct, sellProduct } from '../../utils/inventoryEngine';
+import * as XLSX from 'xlsx';
 
 interface ChatInterfaceProps {
   onReportRequested: (reportType: 'LABARUGI' | 'NERACA' | 'BUKUBESAR' | 'PIUTANG' | 'PAJAK') => void;
@@ -16,6 +17,52 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onReportRequested 
   const [ocrProcessing, setOcrProcessing] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleExportExcel = (reportType: 'LABARUGI' | 'NERACA', reportData: any) => {
+    let dataToExport: any[] = [];
+
+    if (reportType === 'LABARUGI') {
+      dataToExport.push({ 'Kategori': 'PENDAPATAN', 'Kode Akun': '', 'Nama Akun': '', 'Nominal (Rp)': '' });
+      reportData.revenue.forEach((r: any) => {
+        dataToExport.push({ 'Kategori': '', 'Kode Akun': r.code, 'Nama Akun': r.name, 'Nominal (Rp)': r.amount });
+      });
+      dataToExport.push({ 'Kategori': 'Total Pendapatan', 'Kode Akun': '', 'Nama Akun': '', 'Nominal (Rp)': reportData.totalRevenue });
+      
+      dataToExport.push({ 'Kategori': '', 'Kode Akun': '', 'Nama Akun': '', 'Nominal (Rp)': '' });
+      dataToExport.push({ 'Kategori': 'BEBAN', 'Kode Akun': '', 'Nama Akun': '', 'Nominal (Rp)': '' });
+      reportData.expenses.forEach((e: any) => {
+        dataToExport.push({ 'Kategori': '', 'Kode Akun': e.code, 'Nama Akun': e.name, 'Nominal (Rp)': e.amount });
+      });
+      dataToExport.push({ 'Kategori': 'Total Beban', 'Kode Akun': '', 'Nama Akun': '', 'Nominal (Rp)': reportData.totalExpenses });
+      dataToExport.push({ 'Kategori': 'LABA BERSIH', 'Kode Akun': '', 'Nama Akun': '', 'Nominal (Rp)': reportData.netProfit });
+    } else if (reportType === 'NERACA') {
+      dataToExport.push({ 'Kategori': 'AKTIVA (ASET)', 'Kode Akun': '', 'Nama Akun': '', 'Nominal (Rp)': '' });
+      reportData.assets.forEach((a: any) => {
+        dataToExport.push({ 'Kategori': '', 'Kode Akun': a.code, 'Nama Akun': a.name, 'Nominal (Rp)': a.amount });
+      });
+      dataToExport.push({ 'Kategori': 'Total Aktiva', 'Kode Akun': '', 'Nama Akun': '', 'Nominal (Rp)': reportData.totalAssets });
+      
+      dataToExport.push({ 'Kategori': '', 'Kode Akun': '', 'Nama Akun': '', 'Nominal (Rp)': '' });
+      dataToExport.push({ 'Kategori': 'KEWAJIBAN', 'Kode Akun': '', 'Nama Akun': '', 'Nominal (Rp)': '' });
+      reportData.liabilities.forEach((l: any) => {
+        dataToExport.push({ 'Kategori': '', 'Kode Akun': l.code, 'Nama Akun': l.name, 'Nominal (Rp)': l.amount });
+      });
+      dataToExport.push({ 'Kategori': 'Total Kewajiban', 'Kode Akun': '', 'Nama Akun': '', 'Nominal (Rp)': reportData.totalLiabilities });
+      
+      dataToExport.push({ 'Kategori': '', 'Kode Akun': '', 'Nama Akun': '', 'Nominal (Rp)': '' });
+      dataToExport.push({ 'Kategori': 'EKUITAS', 'Kode Akun': '', 'Nama Akun': '', 'Nominal (Rp)': '' });
+      reportData.equity.forEach((e: any) => {
+        dataToExport.push({ 'Kategori': '', 'Kode Akun': e.code, 'Nama Akun': e.name, 'Nominal (Rp)': e.amount });
+      });
+      dataToExport.push({ 'Kategori': 'Total Ekuitas', 'Kode Akun': '', 'Nama Akun': '', 'Nominal (Rp)': reportData.totalEquity });
+      dataToExport.push({ 'Kategori': 'Total Pasiva', 'Kode Akun': '', 'Nama Akun': '', 'Nominal (Rp)': reportData.totalLiabilities + reportData.totalEquity });
+    }
+
+    const ws = XLSX.utils.json_to_sheet(dataToExport);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, reportType);
+    XLSX.writeFile(wb, `Akunta_${reportType}_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
 
   // Ambil data chat dari IndexedDB
   const messages = useLiveQuery(() => db.chatMessages.toArray()) || [];
@@ -62,11 +109,34 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onReportRequested 
         // Arahkan panel kanan ke laporan yang sesuai
         onReportRequested(aiResult.reportType);
         
-        await db.chatMessages.add({
-          sender: 'AI',
-          text: aiResult.explanation,
-          timestamp: new Date().toISOString(),
-        });
+        if (aiResult.reportType === 'LABARUGI' || aiResult.reportType === 'NERACA') {
+          let reportData;
+          if (aiResult.reportType === 'LABARUGI') {
+            reportData = await generateProfitLoss();
+          } else {
+            reportData = await generateBalanceSheet();
+          }
+          
+          const narrativeText = await getNarrativeAnalysis(aiResult.reportType, reportData);
+          
+          await db.chatMessages.add({
+            sender: 'AI',
+            text: aiResult.explanation,
+            timestamp: new Date().toISOString(),
+            cardType: 'STORY_REPORT',
+            cardData: {
+              reportType: aiResult.reportType,
+              reportData,
+              narrativeText
+            }
+          });
+        } else {
+          await db.chatMessages.add({
+            sender: 'AI',
+            text: aiResult.explanation,
+            timestamp: new Date().toISOString(),
+          });
+        }
       } else {
         await db.chatMessages.add({
           sender: 'AI',
@@ -263,6 +333,142 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onReportRequested 
                   >
                     <X size={14} />
                     <span>Batal</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Render Kartu Laporan Cerita Keuangan (Story Mode) */}
+            {msg.cardType === 'STORY_REPORT' && msg.cardData && (
+              <div className="ai-interactive-card" style={{ maxWidth: '350px', borderLeft: '3px solid var(--accent-secondary)' }}>
+                <div className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Sparkles size={14} style={{ color: 'var(--accent-secondary)' }} />
+                    <strong style={{ fontSize: '12px' }}>
+                      Cerita {msg.cardData.reportType === 'LABARUGI' ? 'Laba Rugi' : 'Neraca'}
+                    </strong>
+                  </div>
+                  
+                  {/* Badge Kesehatan Bisnis */}
+                  {(() => {
+                    const firstLine = msg.cardData.narrativeText.split('\n')[0] || '';
+                    const healthMatch = firstLine.match(/KESEHATAN BISNIS:\s*(SEHAT|WASPADA|KRITIS)/i);
+                    const health = healthMatch ? healthMatch[1].toUpperCase() : 'WASPADA';
+                    const color = health === 'SEHAT' ? 'var(--accent-success)' : health === 'KRITIS' ? 'var(--accent-danger)' : 'var(--accent-warning)';
+                    const bg = health === 'SEHAT' ? 'rgba(16, 185, 129, 0.1)' : health === 'KRITIS' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)';
+                    return (
+                      <span style={{ 
+                        fontSize: '9px', 
+                        fontWeight: 700, 
+                        color, 
+                        background: bg, 
+                        padding: '1px 5px', 
+                        borderRadius: '3px',
+                        border: `1px solid ${color}30`
+                      }}>
+                        {health}
+                      </span>
+                    );
+                  })()}
+                </div>
+
+                {/* Ringkasan Metrik Utama */}
+                <div style={{ 
+                  display: 'grid', 
+                  gridTemplateColumns: 'repeat(3, 1fr)', 
+                  gap: '6px', 
+                  marginBottom: '10px',
+                  padding: '6px 8px',
+                  background: 'rgba(255,255,255,0.02)',
+                  borderRadius: '4px',
+                  border: '1px solid var(--border-color)'
+                }}>
+                  {msg.cardData.reportType === 'LABARUGI' ? (
+                    <>
+                      <div style={{ display: 'flex', flexDirection: 'column', fontSize: '9px', color: 'var(--text-muted)' }}>
+                        <span>Pendapatan</span>
+                        <strong style={{ fontSize: '10.5px', color: 'var(--text-primary)', fontFamily: 'monospace', marginTop: '2px' }}>
+                          Rp{msg.cardData.reportData.totalRevenue.toLocaleString('id-ID', { maximumFractionDigits: 0 })}
+                        </strong>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', fontSize: '9px', color: 'var(--text-muted)' }}>
+                        <span>Beban</span>
+                        <strong style={{ fontSize: '10.5px', color: 'var(--text-primary)', fontFamily: 'monospace', marginTop: '2px' }}>
+                          Rp{msg.cardData.reportData.totalExpenses.toLocaleString('id-ID', { maximumFractionDigits: 0 })}
+                        </strong>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', fontSize: '9px', color: 'var(--text-muted)' }}>
+                        <span>Laba Bersih</span>
+                        <strong style={{ 
+                          fontSize: '10.5px', 
+                          color: msg.cardData.reportData.netProfit >= 0 ? 'var(--accent-success)' : 'var(--accent-danger)', 
+                          fontFamily: 'monospace', 
+                          marginTop: '2px' 
+                        }}>
+                          Rp{msg.cardData.reportData.netProfit.toLocaleString('id-ID', { maximumFractionDigits: 0 })}
+                        </strong>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ display: 'flex', flexDirection: 'column', fontSize: '9px', color: 'var(--text-muted)' }}>
+                        <span>Aset</span>
+                        <strong style={{ fontSize: '10.5px', color: 'var(--text-primary)', fontFamily: 'monospace', marginTop: '2px' }}>
+                          Rp{msg.cardData.reportData.totalAssets.toLocaleString('id-ID', { maximumFractionDigits: 0 })}
+                        </strong>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', fontSize: '9px', color: 'var(--text-muted)' }}>
+                        <span>Utang</span>
+                        <strong style={{ fontSize: '10.5px', color: 'var(--text-primary)', fontFamily: 'monospace', marginTop: '2px' }}>
+                          Rp{msg.cardData.reportData.totalLiabilities.toLocaleString('id-ID', { maximumFractionDigits: 0 })}
+                        </strong>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', fontSize: '9px', color: 'var(--text-muted)' }}>
+                        <span>Modal</span>
+                        <strong style={{ fontSize: '10.5px', color: 'var(--text-primary)', fontFamily: 'monospace', marginTop: '2px' }}>
+                          Rp{msg.cardData.reportData.totalEquity.toLocaleString('id-ID', { maximumFractionDigits: 0 })}
+                        </strong>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Narasi AI */}
+                <div style={{ 
+                  fontSize: '11px', 
+                  lineHeight: '1.45', 
+                  color: 'var(--text-secondary)', 
+                  marginBottom: '12px',
+                  maxHeight: '150px',
+                  overflowY: 'auto',
+                  paddingRight: '4px',
+                  whiteSpace: 'pre-wrap'
+                }}>
+                  {msg.cardData.narrativeText
+                    .split('\n')
+                    .filter((line: string) => !line.toLowerCase().includes('kesehatan bisnis'))
+                    .join('\n')
+                    .trim()
+                  }
+                </div>
+
+                {/* Tombol Aksi */}
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    className="btn btn-secondary"
+                    style={{ flex: 1, padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                    onClick={() => handleExportExcel(msg.cardData.reportType, msg.cardData.reportData)}
+                  >
+                    <FileSpreadsheet size={12} />
+                    <span>Ekspor Excel</span>
+                  </button>
+                  <button
+                    className="btn btn-primary"
+                    style={{ flex: 1, padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                    onClick={() => onReportRequested(msg.cardData.reportType)}
+                  >
+                    <Play size={12} />
+                    <span>Detail Tabel</span>
                   </button>
                 </div>
               </div>

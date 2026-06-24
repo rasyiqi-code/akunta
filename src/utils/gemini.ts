@@ -1,5 +1,6 @@
 import type { Account, Product } from '../types/ledger';
 import { db, DEFAULT_ACCOUNTS } from './db';
+import { invoke } from '@tauri-apps/api/core';
 
 const GEMINI_API_KEY = 'AIzaSyBTZUtGC43Z9APtBDrGZAnClsjqjAqt4QU';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
@@ -339,22 +340,33 @@ export async function getNarrativeAnalysis(reportType: 'LABARUGI' | 'NERACA', re
   } catch (error) {
     console.error('Error generating narrative analysis:', error);
     
-    // Fallback local logic
-    if (reportType === 'LABARUGI') {
-      const health = reportData.netProfit > 5000000 ? 'SEHAT' : reportData.netProfit > 0 ? 'WASPADA' : 'KRITIS';
-      return `KESEHATAN BISNIS: ${health}
+    // Panggil analisis kesehatan laporan di Rust native backend
+    try {
+      const resultJson = await invoke<string>('analyze_report_health_rust', {
+        reportType,
+        reportDataJson: JSON.stringify(reportData)
+      });
+      const result = JSON.parse(resultJson);
+      return result.narrativeText;
+    } catch (err) {
+      console.error('Gagal menjalankan analisis di Rust:', err);
+      // Fallback local logic TS jika Rust juga gagal
+      if (reportType === 'LABARUGI') {
+        const health = reportData.netProfit > 5000000 ? 'SEHAT' : reportData.netProfit > 0 ? 'WASPADA' : 'KRITIS';
+        return `KESEHATAN BISNIS: ${health}
 
 Berdasarkan data Laba Rugi saat ini, Total Pendapatan Anda adalah Rp ${reportData.totalRevenue.toLocaleString('id-ID')} dengan Total Beban Rp ${reportData.totalExpenses.toLocaleString('id-ID')}.
 
 Laba bersih Anda tercatat sebesar Rp ${reportData.netProfit.toLocaleString('id-ID')}. 
 ${health === 'SEHAT' ? 'Bisnis Anda berjalan sangat sehat! Pertahankan performa ini dan pertimbangkan untuk menaikkan kapasitas produksi.' : health === 'WASPADA' ? 'Bisnis Anda mencatat keuntungan namun dengan margin yang tipis. Coba periksa biaya operasional yang bisa dikurangi.' : 'Peringatan: Bisnis Anda mengalami kerugian operasional bulan ini. Segera evaluasi harga jual produk dan tekan pengeluaran darurat.'}`;
-    } else {
-      const health = reportData.totalAssets > reportData.totalLiabilities * 2 ? 'SEHAT' : 'WASPADA';
-      return `KESEHATAN BISNIS: ${health}
+      } else {
+        const health = reportData.totalAssets > reportData.totalLiabilities * 2 ? 'SEHAT' : 'WASPADA';
+        return `KESEHATAN BISNIS: ${health}
 
 Neraca keuangan Anda menunjukkan total kepemilikan Aset sebesar Rp ${reportData.totalAssets.toLocaleString('id-ID')}, dengan total Utang/Kewajiban Rp ${reportData.totalLiabilities.toLocaleString('id-ID')} dan Modal Pemilik Rp ${reportData.totalEquity.toLocaleString('id-ID')}.
 
 Aset Anda seimbang dengan Kewajiban + Ekuitas. ${health === 'SEHAT' ? 'Kondisi neraca sangat baik, kepemilikan aset jauh lebih besar dari utang.' : 'Peringatan: Porsi utang Anda cukup tinggi dibanding aset yang dimiliki. Jaga likuiditas kas Anda agar pembayaran utang lancar.'}`;
+      }
     }
   }
 }

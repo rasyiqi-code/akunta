@@ -179,6 +179,13 @@ struct AdjustResult {
     total_val: f64,
 }
 
+#[derive(Serialize, Deserialize)]
+struct HealthAnalysisResult {
+    health: String,
+    #[serde(rename = "narrativeText")]
+    narrative_text: String,
+}
+
 #[tauri::command]
 fn is_journal_balanced_rust(entry_json: String) -> Result<bool, String> {
     let entry: JournalEntry = serde_json::from_str(&entry_json)
@@ -520,6 +527,81 @@ fn calculate_monthly_depreciation_rust(asset_json: String) -> Result<f64, String
     Ok(monthly_depr)
 }
 
+#[tauri::command]
+fn analyze_report_health_rust(report_type: String, report_data_json: String) -> Result<String, String> {
+    if report_type == "LABARUGI" {
+        let report: ProfitLossReportRust = serde_json::from_str(&report_data_json)
+            .map_err(|e| format!("Gagal mendeserialisasi data laporan laba rugi: {}", e))?;
+
+        let health = if report.net_profit > 5000000.0 || (report.total_revenue > 0.0 && report.net_profit > 0.15 * report.total_revenue) {
+            "SEHAT".to_string()
+        } else if report.net_profit <= 0.0 {
+            "KRITIS".to_string()
+        } else {
+            "WASPADA".to_string()
+        };
+
+        let advice = if health == "SEHAT" {
+            "Bisnis Anda berjalan sangat sehat! Pertahankan performa ini dan pertimbangkan untuk menaikkan kapasitas produksi."
+        } else if health == "WASPADA" {
+            "Bisnis Anda mencatat keuntungan namun dengan margin yang tipis. Coba periksa biaya operasional yang bisa dikurangi."
+        } else {
+            "Peringatan: Bisnis Anda mengalami kerugian operasional bulan ini. Segera evaluasi harga jual produk dan tekan pengeluaran darurat."
+        };
+
+        let narrative_text = format!(
+            "KESEHATAN BISNIS: {}\n\nBerdasarkan data Laba Rugi saat ini, Total Pendapatan Anda adalah Rp {} dengan Total Beban Rp {}.\n\nLaba bersih Anda tercatat sebesar Rp {}.\n\n{}",
+            health,
+            report.total_revenue,
+            report.total_expenses,
+            report.net_profit,
+            advice
+        );
+
+        let result = HealthAnalysisResult {
+            health,
+            narrative_text,
+        };
+
+        serde_json::to_string(&result)
+            .map_err(|e| format!("Gagal menserialisasi hasil analisis: {}", e))
+    } else if report_type == "NERACA" {
+        let report: BalanceSheetReportRust = serde_json::from_str(&report_data_json)
+            .map_err(|e| format!("Gagal mendeserialisasi data laporan neraca: {}", e))?;
+
+        let health = if report.total_assets > report.total_liabilities * 2.0 {
+            "SEHAT".to_string()
+        } else {
+            "WASPADA".to_string()
+        };
+
+        let advice = if health == "SEHAT" {
+            "Kondisi neraca sangat baik, kepemilikan aset jauh lebih besar dari utang."
+        } else {
+            "Peringatan: Porsi utang Anda cukup tinggi dibanding aset yang dimiliki. Jaga likuiditas kas Anda agar pembayaran utang lancar."
+        };
+
+        let narrative_text = format!(
+            "KESEHATAN BISNIS: {}\n\nNeraca keuangan Anda menunjukkan total kepemilikan Aset sebesar Rp {}, dengan total Utang/Kewajiban Rp {} dan Modal Pemilik Rp {}.\n\nAset Anda seimbang dengan Kewajiban + Ekuitas. {}",
+            health,
+            report.total_assets,
+            report.total_liabilities,
+            report.total_equity,
+            advice
+        );
+
+        let result = HealthAnalysisResult {
+            health,
+            narrative_text,
+        };
+
+        serde_json::to_string(&result)
+            .map_err(|e| format!("Gagal menserialisasi hasil analisis: {}", e))
+    } else {
+        Err(format!("Tipe laporan tidak dikenal: {}", report_type))
+    }
+}
+
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -729,7 +811,8 @@ pub fn run() {
             purchase_product_rust,
             sell_product_rust,
             adjust_product_stock_rust,
-            calculate_monthly_depreciation_rust
+            calculate_monthly_depreciation_rust,
+            analyze_report_health_rust
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
