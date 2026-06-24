@@ -198,31 +198,15 @@ function App() {
             </div>
             
             {/* Switch Tab Kecil ala Enterprise */}
-            <div style={{ display: 'flex', gap: '2px', background: 'rgba(0,0,0,0.15)', padding: '2px', borderRadius: 'var(--radius-sm)' }}>
+            <div className="tab-switcher">
               <button 
-                className="btn" 
-                style={{ 
-                  padding: '2px 6px', 
-                  fontSize: '9.5px', 
-                  background: previewTab === 'WARROOM' ? 'var(--bg-card)' : 'transparent',
-                  color: previewTab === 'WARROOM' ? 'var(--text-primary)' : 'var(--text-secondary)',
-                  border: 'none',
-                  cursor: 'pointer'
-                }}
+                className={`tab-switcher-btn ${previewTab === 'WARROOM' ? 'active' : ''}`}
                 onClick={() => setPreviewTab('WARROOM')}
               >
                 Ringkasan
               </button>
               <button 
-                className="btn" 
-                style={{ 
-                  padding: '2px 6px', 
-                  fontSize: '9.5px', 
-                  background: previewTab === 'CHAT' ? 'var(--bg-card)' : 'transparent',
-                  color: previewTab === 'CHAT' ? 'var(--text-primary)' : 'var(--text-secondary)',
-                  border: 'none',
-                  cursor: 'pointer'
-                }}
+                className={`tab-switcher-btn ${previewTab === 'CHAT' ? 'active' : ''}`}
                 onClick={() => setPreviewTab('CHAT')}
               >
                 Chat AI

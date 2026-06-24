@@ -643,6 +643,47 @@ select.form-input {
   background-image: url("data:image/svg+xml;utf8,<svg fill='%23475569' height='20' viewBox='0 0 24 24' width='20' xmlns='http://www.w3.org/2000/svg'><path d='M7 10l5 5 5-5z'/></svg>");
 }
 
+/* Tab Switcher Kecil ala Windows / Enterprise */
+.tab-switcher {
+  display: flex;
+  gap: 2px;
+  background: rgba(0, 0, 0, 0.12);
+  border: 1px solid var(--border-color);
+  padding: 1px;
+  border-radius: var(--radius-sm);
+  align-items: center;
+  height: 20px;
+}
+
+.tab-switcher-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: 9.5px;
+  font-weight: 500;
+  padding: 0 6px;
+  border-radius: 2px;
+  cursor: pointer;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.1s ease;
+  outline: none;
+}
+
+.tab-switcher-btn:hover {
+  color: var(--text-primary);
+}
+
+.tab-switcher-btn.active {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  font-weight: 600;
+}
+
 /* Chat Input Action Button (Lensa AI) */
 .chat-action-btn {
   background: transparent;
