@@ -15,6 +15,8 @@ import { runMonthlyDepreciation, addFixedAsset, calculateMonthlyDepreciation } f
 import { getTaxSummary, generateEFakturCSV, generateEBupotCSV, reconcileBankStatement, type TaxTransaction } from '../../utils/pajakEngine';
 import { getNarrativeAnalysis } from '../../utils/gemini';
 import * as XLSX from 'xlsx';
+import { TrialBalance } from './TrialBalance';
+import { CashFlow } from './CashFlow';
 
 const MonthlyDepreciationCell: React.FC<{ asset: any }> = ({ asset }) => {
   const [value, setValue] = useState<number>(0);
@@ -35,7 +37,7 @@ const MonthlyDepreciationCell: React.FC<{ asset: any }> = ({ asset }) => {
 };
 
 interface LedgerDashboardProps {
-  activeTab: 'JURNAL' | 'BUKUBESAR' | 'PERSEDIAAN' | 'ASETTETAP' | 'LABARUGI' | 'NERACA' | 'PAJAK';
+  activeTab: 'JURNAL' | 'BUKUBESAR' | 'PERSEDIAAN' | 'ASETTETAP' | 'LABARUGI' | 'NERACA' | 'PAJAK' | 'NERACASALDO' | 'ARUSKAS';
 }
 
 export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) => {
@@ -840,6 +842,16 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
               </div>
             </div>
           </>
+        )}
+
+        {/* Tab: NERACA SALDO */}
+        {activeTab === 'NERACASALDO' && (
+          <TrialBalance />
+        )}
+
+        {/* Tab: ARUS KAS */}
+        {activeTab === 'ARUSKAS' && (
+          <CashFlow />
         )}
 
         {/* Tab: ASET TETAP (Fase 2) */}

@@ -10,7 +10,7 @@ import { LedgerDashboard } from './components/AccountantMode/LedgerDashboard';
 import { TitleBar } from './components/TitleBar';
 import { CommandMenu } from './components/CommandMenu';
 
-type ModuleTab = 'JURNAL' | 'BUKUBESAR' | 'PERSEDIAAN' | 'ASETTETAP' | 'LABARUGI' | 'NERACA' | 'PAJAK';
+type ModuleTab = 'JURNAL' | 'BUKUBESAR' | 'PERSEDIAAN' | 'ASETTETAP' | 'LABARUGI' | 'NERACA' | 'PAJAK' | 'NERACASALDO' | 'ARUSKAS';
 
 function App() {
   const [activeTab, setActiveTab] = useState<ModuleTab>('JURNAL');
@@ -41,6 +41,8 @@ function App() {
       case 'LABARUGI': return 'Laporan Laba Rugi';
       case 'NERACA': return 'Laporan Neraca';
       case 'PAJAK': return 'Bank & Perpajakan';
+      case 'NERACASALDO': return 'Neraca Saldo';
+      case 'ARUSKAS': return 'Laporan Arus Kas';
       default: return 'Modul';
     }
   };
@@ -103,8 +105,17 @@ function App() {
               className={`sidebar-item ${activeTab === 'BUKUBESAR' ? 'active' : ''}`}
               onClick={() => setActiveTab('BUKUBESAR')}
             >
+              <Sidebar size={13} style={{ display: 'none' }} /> {/* dummy to avoid error if any icon needed */}
               <List size={13} />
               <span>Daftar Akun (COA)</span>
+            </div>
+
+            <div 
+              className={`sidebar-item ${activeTab === 'NERACASALDO' ? 'active' : ''}`}
+              onClick={() => setActiveTab('NERACASALDO')}
+            >
+              <List size={13} />
+              <span>Neraca Saldo</span>
             </div>
 
             <div 
@@ -140,6 +151,14 @@ function App() {
             >
               <FileText size={13} />
               <span>Neraca</span>
+            </div>
+
+            <div 
+              className={`sidebar-item ${activeTab === 'ARUSKAS' ? 'active' : ''}`}
+              onClick={() => setActiveTab('ARUSKAS')}
+            >
+              <FileText size={13} />
+              <span>Arus Kas</span>
             </div>
 
             <div 

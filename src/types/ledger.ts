@@ -82,3 +82,38 @@ export interface FixedAsset {
   accumulatedDepreciation: number; // Akumulasi penyusutan saat ini
   isFullyDepreciated?: boolean;   // Status jika umur ekonomis habis
 }
+
+export interface TrialBalanceItem {
+  code: string;
+  name: string;
+  type: string;
+  debit: number;
+  credit: number;
+}
+
+export interface TrialBalanceReport {
+  items: TrialBalanceItem[];
+  totalDebit: number;
+  totalCredit: number;
+}
+
+export interface CashFlowItem {
+  description: string;
+  amount: number;
+}
+
+export interface CashFlowReport {
+  operatingReceipts: CashFlowItem[];
+  operatingPayments: CashFlowItem[];
+  totalOperating: number;
+  investingReceipts: CashFlowItem[];
+  investingPayments: CashFlowItem[];
+  totalInvesting: number;
+  financingReceipts: CashFlowItem[];
+  financingPayments: CashFlowItem[];
+  totalFinancing: number;
+  netIncrease: number;
+  startBalance: number;
+  endBalance: number;
+}
+

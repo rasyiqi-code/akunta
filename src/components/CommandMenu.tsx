@@ -152,10 +152,12 @@ export const CommandMenu: React.FC<CommandMenuProps> = ({ activeTab, setActiveTa
   const navItems = [
     { label: 'Buka Jurnal Umum', value: 'JURNAL', icon: <Navigation size={13} /> },
     { label: 'Buka Daftar Akun (COA)', value: 'BUKUBESAR', icon: <Navigation size={13} /> },
+    { label: 'Buka Neraca Saldo (Trial Balance)', value: 'NERACASALDO', icon: <Navigation size={13} /> },
     { label: 'Buka Persediaan Barang', value: 'PERSEDIAAN', icon: <Navigation size={13} /> },
     { label: 'Buka Modul Aset Tetap', value: 'ASETTETAP', icon: <Navigation size={13} /> },
     { label: 'Buka Laporan Laba Rugi', value: 'LABARUGI', icon: <Navigation size={13} /> },
     { label: 'Buka Laporan Neraca', value: 'NERACA', icon: <Navigation size={13} /> },
+    { label: 'Buka Laporan Arus Kas', value: 'ARUSKAS', icon: <Navigation size={13} /> },
     { label: 'Buka Bank & Perpajakan', value: 'PAJAK', icon: <Navigation size={13} /> },
   ];
 

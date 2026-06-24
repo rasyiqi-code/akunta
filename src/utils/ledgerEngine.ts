@@ -1,4 +1,4 @@
-import type { JournalEntry } from '../types/ledger';
+import type { JournalEntry, TrialBalanceReport, CashFlowReport } from '../types/ledger';
 import { invoke } from '@tauri-apps/api/core';
 
 
@@ -126,4 +126,37 @@ export async function exportToBackupString(): Promise<string> {
 
 export async function importFromBackupString(jsonString: string): Promise<void> {
   return await invoke<void>('import_backup_json_rust', { jsonString });
+}
+
+export async function generateTrialBalance(): Promise<TrialBalanceReport> {
+  try {
+    const resultJson = await invoke<string>('generate_trial_balance_rust');
+    return JSON.parse(resultJson);
+  } catch (err) {
+    console.error('Gagal mengambil Trial Balance dari Rust:', err);
+    return { items: [], totalDebit: 0, totalCredit: 0 };
+  }
+}
+
+export async function generateCashFlow(): Promise<CashFlowReport> {
+  try {
+    const resultJson = await invoke<string>('generate_cash_flow_rust');
+    return JSON.parse(resultJson);
+  } catch (err) {
+    console.error('Gagal mengambil Laporan Arus Kas dari Rust:', err);
+    return {
+      operatingReceipts: [],
+      operatingPayments: [],
+      totalOperating: 0,
+      investingReceipts: [],
+      investingPayments: [],
+      totalInvesting: 0,
+      financingReceipts: [],
+      financingPayments: [],
+      totalFinancing: 0,
+      netIncrease: 0,
+      startBalance: 0,
+      endBalance: 0,
+    };
+  }
 }

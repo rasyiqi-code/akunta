@@ -224,6 +224,62 @@ struct BalanceSheetReportRust {
     total_equity: f64,
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+struct TrialBalanceItem {
+    code: String,
+    name: String,
+    #[serde(rename = "type")]
+    acc_type: String,
+    debit: f64,
+    credit: f64,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct TrialBalanceReport {
+    items: Vec<TrialBalanceItem>,
+    #[serde(rename = "totalDebit")]
+    total_debit: f64,
+    #[serde(rename = "totalCredit")]
+    total_credit: f64,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct CashFlowItem {
+    description: String,
+    amount: f64,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct CashFlowReportRust {
+    #[serde(rename = "operatingReceipts")]
+    operating_receipts: Vec<CashFlowItem>,
+    #[serde(rename = "operatingPayments")]
+    operating_payments: Vec<CashFlowItem>,
+    #[serde(rename = "totalOperating")]
+    total_operating: f64,
+    
+    #[serde(rename = "investingReceipts")]
+    investing_receipts: Vec<CashFlowItem>,
+    #[serde(rename = "investingPayments")]
+    investing_payments: Vec<CashFlowItem>,
+    #[serde(rename = "totalInvesting")]
+    total_investing: f64,
+    
+    #[serde(rename = "financingReceipts")]
+    financing_receipts: Vec<CashFlowItem>,
+    #[serde(rename = "financingPayments")]
+    financing_payments: Vec<CashFlowItem>,
+    #[serde(rename = "totalFinancing")]
+    total_financing: f64,
+    
+    #[serde(rename = "netIncrease")]
+    net_increase: f64,
+    #[serde(rename = "startBalance")]
+    start_balance: f64,
+    #[serde(rename = "endBalance")]
+    end_balance: f64,
+}
+
 #[derive(Serialize, Deserialize)]
 struct ReconciliationResult {
     matched: bool,
@@ -2002,6 +2058,256 @@ fn import_backup_json_rust(
     Ok(())
 }
 
+#[tauri::command]
+fn generate_trial_balance_rust(state: tauri::State<DbState>) -> Result<String, String> {
+    let conn = state.0.lock().unwrap();
+    
+    let mut stmt = conn.prepare(
+        "SELECT code, name, type, normal_balance FROM accounts ORDER BY code ASC"
+    ).map_err(|e| e.to_string())?;
+    
+    let accounts_iter = stmt.query_map([], |row| {
+        Ok(Account {
+            code: row.get(0)?,
+            name: row.get(1)?,
+            acc_type: row.get(2)?,
+            normal_balance: row.get(3)?,
+        })
+    }).map_err(|e| e.to_string())?;
+    
+    let mut items = Vec::new();
+    let mut total_debit = 0.0;
+    let mut total_credit = 0.0;
+    
+    for acc in accounts_iter {
+        let account = acc.map_err(|e| e.to_string())?;
+        
+        let (total_debit_acc, total_credit_acc): (f64, f64) = conn.query_row(
+            "SELECT COALESCE(SUM(debit), 0.0), COALESCE(SUM(credit), 0.0) FROM journal_lines WHERE account_code = ?1",
+            [&account.code],
+            |row| Ok((row.get(0)?, row.get(1)?))
+        ).unwrap_or((0.0, 0.0));
+        
+        let mut item_debit = 0.0;
+        let mut item_credit = 0.0;
+        
+        if account.normal_balance == "D" {
+            let bal = total_debit_acc - total_credit_acc;
+            if bal >= 0.0 {
+                item_debit = bal;
+            } else {
+                item_credit = -bal;
+            }
+        } else {
+            let bal = total_credit_acc - total_debit_acc;
+            if bal >= 0.0 {
+                item_credit = bal;
+            } else {
+                item_debit = -bal;
+            }
+        }
+        
+        total_debit += item_debit;
+        total_credit += item_credit;
+        
+        items.push(TrialBalanceItem {
+            code: account.code,
+            name: account.name,
+            acc_type: account.acc_type,
+            debit: item_debit,
+            credit: item_credit,
+        });
+    }
+    
+    let report = TrialBalanceReport {
+        items,
+        total_debit,
+        total_credit,
+    };
+    
+    serde_json::to_string(&report).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn generate_cash_flow_rust(state: tauri::State<DbState>) -> Result<String, String> {
+    let conn = state.0.lock().unwrap();
+    
+    let (end_debit, end_credit): (f64, f64) = conn.query_row(
+        "SELECT COALESCE(SUM(debit), 0.0), COALESCE(SUM(credit), 0.0) FROM journal_lines WHERE account_code IN ('1101', '1102', '1103')",
+        [],
+        |row| Ok((row.get(0)?, row.get(1)?))
+    ).unwrap_or((0.0, 0.0));
+    let end_balance = end_debit - end_credit;
+    
+    let mut stmt = conn.prepare(
+        r#"SELECT jl.journal_id, jl.account_code, jl.debit, jl.credit, j.description 
+           FROM journal_lines jl
+           JOIN journals j ON jl.journal_id = j.id
+           WHERE jl.account_code IN ('1101', '1102', '1103')
+           ORDER BY j.date ASC"#
+    ).map_err(|e| e.to_string())?;
+    
+    struct RawCashLine {
+        journal_id: String,
+        debit: f64,
+        credit: f64,
+        description: String,
+    }
+    
+    let cash_lines_iter = stmt.query_map([], |row| {
+        Ok(RawCashLine {
+            journal_id: row.get(0)?,
+            debit: row.get(2)?,
+            credit: row.get(3)?,
+            description: row.get(4)?,
+        })
+    }).map_err(|e| e.to_string())?;
+    
+    let mut operating_receipts = Vec::new();
+    let mut operating_payments = Vec::new();
+    let mut total_operating = 0.0;
+    
+    let investing_receipts = Vec::new();
+    let mut investing_payments = Vec::new();
+    let mut total_investing = 0.0;
+    
+    let mut financing_receipts = Vec::new();
+    let financing_payments = Vec::new();
+    let mut total_financing = 0.0;
+    
+    for row in cash_lines_iter {
+        let cash_line = row.map_err(|e| e.to_string())?;
+        
+        let mut stmt_offset = conn.prepare(
+            "SELECT account_code FROM journal_lines WHERE journal_id = ?1 AND account_code NOT IN ('1101', '1102', '1103')"
+        ).map_err(|e| e.to_string())?;
+        
+        struct OffsetLine {
+            account_code: String,
+        }
+        
+        let offset_iter = stmt_offset.query_map([&cash_line.journal_id], |r| {
+            Ok(OffsetLine {
+                account_code: r.get(0)?,
+            })
+        }).map_err(|e| e.to_string())?;
+        
+        let mut offsets = Vec::new();
+        for o in offset_iter {
+            offsets.push(o.map_err(|e| e.to_string())?);
+        }
+        
+        if cash_line.debit > 0.0 {
+            let amount = cash_line.debit;
+            
+            if let Some(offset) = offsets.first() {
+                let acc_type: String = conn.query_row(
+                    "SELECT type FROM accounts WHERE code = ?1",
+                    [&offset.account_code],
+                    |row| row.get(0)
+                ).unwrap_or_else(|_| "LAIN".to_string());
+                
+                if acc_type == "PENDAPATAN" || offset.account_code == "1104" {
+                    total_operating += amount;
+                    operating_receipts.push(CashFlowItem {
+                        description: cash_line.description.clone(),
+                        amount,
+                    });
+                } else if acc_type == "EKUITAS" {
+                    total_financing += amount;
+                    financing_receipts.push(CashFlowItem {
+                        description: cash_line.description.clone(),
+                        amount,
+                    });
+                } else if acc_type == "KEWAJIBAN" {
+                    total_financing += amount;
+                    financing_receipts.push(CashFlowItem {
+                        description: cash_line.description.clone(),
+                        amount,
+                    });
+                } else {
+                    total_operating += amount;
+                    operating_receipts.push(CashFlowItem {
+                        description: cash_line.description.clone(),
+                        amount,
+                    });
+                }
+            } else {
+                total_operating += amount;
+                operating_receipts.push(CashFlowItem {
+                    description: cash_line.description.clone(),
+                    amount,
+                });
+            }
+        } else if cash_line.credit > 0.0 {
+            let amount = cash_line.credit;
+            
+            if let Some(offset) = offsets.first() {
+                let acc_type: String = conn.query_row(
+                    "SELECT type FROM accounts WHERE code = ?1",
+                    [&offset.account_code],
+                    |row| row.get(0)
+                ).unwrap_or_else(|_| "LAIN".to_string());
+                
+                if acc_type == "BEBAN" {
+                    total_operating -= amount;
+                    operating_payments.push(CashFlowItem {
+                        description: cash_line.description.clone(),
+                        amount,
+                    });
+                } else if offset.account_code == "1105" || offset.account_code == "2101" {
+                    total_operating -= amount;
+                    operating_payments.push(CashFlowItem {
+                        description: cash_line.description.clone(),
+                        amount,
+                    });
+                } else if offset.account_code.starts_with("12") {
+                    total_investing -= amount;
+                    investing_payments.push(CashFlowItem {
+                        description: cash_line.description.clone(),
+                        amount,
+                    });
+                } else {
+                    total_operating -= amount;
+                    operating_payments.push(CashFlowItem {
+                        description: cash_line.description.clone(),
+                        amount,
+                    });
+                }
+            } else {
+                total_operating -= amount;
+                operating_payments.push(CashFlowItem {
+                    description: cash_line.description.clone(),
+                    amount,
+                });
+            }
+        }
+    }
+    
+    let net_increase = total_operating + total_investing + total_financing;
+    let start_balance = end_balance - net_increase;
+    
+    let report = CashFlowReportRust {
+        operating_receipts,
+        operating_payments,
+        total_operating,
+        
+        investing_receipts,
+        investing_payments,
+        total_investing,
+        
+        financing_receipts,
+        financing_payments,
+        total_financing,
+        
+        net_increase,
+        start_balance,
+        end_balance,
+    };
+    
+    serde_json::to_string(&report).map_err(|e| e.to_string())
+}
+
 // ==========================================
 // ENTRY POINT RUN & ROUTING HANDLER
 // ==========================================
@@ -2034,6 +2340,8 @@ pub fn run() {
             get_account_balances_rust,
             generate_profit_loss_rust,
             generate_balance_sheet_rust,
+            generate_trial_balance_rust,
+            generate_cash_flow_rust,
             get_products_rust,
             add_product_rust,
             get_inventory_logs_rust,
