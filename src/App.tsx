@@ -15,6 +15,7 @@ function App() {
   const [isLightMode, setIsLightMode] = useState(false);
   const [isDbReady, setIsDbReady] = useState(false);
   const [showPreviewPane, setShowPreviewPane] = useState(true);
+  const [previewTab, setPreviewTab] = useState<'WARROOM' | 'CHAT'>('WARROOM');
 
   // Inisialisasi Database
   useEffect(() => {
@@ -188,22 +189,51 @@ function App() {
           <LedgerDashboard activeTab={activeTab} />
         </main>
 
-        {/* PANEL KANAN: Preview Pane (Asisten AI - War Room & Chat) */}
+        {/* PANEL KANAN: Preview Pane (Asisten AI - War Room ATAU Chat) */}
         <aside className={`preview-assistant-pane ${showPreviewPane ? '' : 'collapsed'}`}>
-          <div className="panel-header" style={{ background: 'transparent' }}>
+          <div className="panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div className="panel-title">
               <Sparkles size={12} style={{ color: 'var(--accent-primary)' }} />
-              <span>Preview Pane: Asisten AI</span>
+              <span>Asisten AI</span>
+            </div>
+            
+            {/* Switch Tab Kecil ala Enterprise */}
+            <div style={{ display: 'flex', gap: '2px', background: 'rgba(0,0,0,0.15)', padding: '2px', borderRadius: 'var(--radius-sm)' }}>
+              <button 
+                className="btn" 
+                style={{ 
+                  padding: '2px 6px', 
+                  fontSize: '9.5px', 
+                  background: previewTab === 'WARROOM' ? 'var(--bg-card)' : 'transparent',
+                  color: previewTab === 'WARROOM' ? 'var(--text-primary)' : 'var(--text-secondary)',
+                  border: 'none',
+                  cursor: 'pointer'
+                }}
+                onClick={() => setPreviewTab('WARROOM')}
+              >
+                Ringkasan
+              </button>
+              <button 
+                className="btn" 
+                style={{ 
+                  padding: '2px 6px', 
+                  fontSize: '9.5px', 
+                  background: previewTab === 'CHAT' ? 'var(--bg-card)' : 'transparent',
+                  color: previewTab === 'CHAT' ? 'var(--text-primary)' : 'var(--text-secondary)',
+                  border: 'none',
+                  cursor: 'pointer'
+                }}
+                onClick={() => setPreviewTab('CHAT')}
+              >
+                Chat AI
+              </button>
             </div>
           </div>
           
           <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-            {/* Bagian Atas: War Room (Dashboard Ringkas) */}
-            <div style={{ flex: '0 0 45%', overflowY: 'auto', borderBottom: '1px solid var(--border-color)' }}>
+            {previewTab === 'WARROOM' ? (
               <WarRoom />
-            </div>
-            {/* Bagian Bawah: Chat Interface */}
-            <div style={{ flex: '0 0 55%', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            ) : (
               <ChatInterface onReportRequested={(report) => {
                 if (report === 'PIUTANG') {
                   setActiveTab('PAJAK');
@@ -211,7 +241,7 @@ function App() {
                   setActiveTab(report);
                 }
               }} />
-            </div>
+            )}
           </div>
         </aside>
 
