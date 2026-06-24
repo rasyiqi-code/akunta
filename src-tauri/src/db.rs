@@ -1,4 +1,4 @@
-use rusqlite::{Connection, Result};
+use rusqlite::Connection;
 
 pub fn init_db(app_handle: &tauri::AppHandle) -> std::result::Result<Connection, String> {
     use tauri::Manager;

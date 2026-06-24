@@ -3,7 +3,7 @@ use tauri::Emitter;
 use std::fs;
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::Connection;
 
 mod db;
 
