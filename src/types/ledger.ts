@@ -82,6 +82,3 @@ export interface FixedAsset {
   accumulatedDepreciation: number; // Akumulasi penyusutan saat ini
   isFullyDepreciated?: boolean;   // Status jika umur ekonomis habis
 }
-
-export type UserRole = 'OWNER' | 'ACCOUNTANT' | 'STAFF';
-
