@@ -61,10 +61,6 @@ export function TitleBar() {
   return (
     <div className="titlebar" data-tauri-drag-region>
       <div className="titlebar-drag-area" data-tauri-drag-region>
-        <div className="titlebar-logo" data-tauri-drag-region>
-          <span className="logo-dot"></span>
-          <span data-tauri-drag-region>Akunta</span>
-        </div>
         <div className="titlebar-title" data-tauri-drag-region>
           Akunta - Dua Muka
         </div>

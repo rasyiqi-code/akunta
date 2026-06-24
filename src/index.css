@@ -98,13 +98,13 @@ body {
 
 /* Titlebar Kustom (Frameless Window) */
 .titlebar {
-  height: 24px;
-  background: var(--bg-sidebar);
+  height: 32px;
+  background: var(--bg-app);
   border-bottom: 1px solid var(--border-color);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0 4px 0 10px;
+  padding: 0 6px 0 12px;
   user-select: none;
   font-family: var(--font-body);
   z-index: 1000;
@@ -158,8 +158,8 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 20px;
+  width: 32px;
+  height: 24px;
   background: transparent;
   border: none;
   border-radius: var(--radius-sm);
@@ -183,9 +183,20 @@ body {
 /* Container Utama */
 .app-container {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   height: 100vh;
   width: 100vw;
+  overflow: hidden;
+}
+
+/* Window Utama Kanan (Titlebar + Workspace) */
+.main-window-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--bg-app);
 }
 
 /* Split Workspace */
@@ -202,9 +213,11 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 6px 8px 6px;
+  height: 32px;
+  padding: 0 8px;
   border-bottom: 1px solid var(--border-color);
   margin-bottom: 8px;
+  box-sizing: border-box;
 }
 
 .logo-icon {
@@ -243,6 +256,7 @@ body {
 /* SIDEBAR KIRI (Navigation Pane - Compact 150px) */
 .sidebar-pane {
   width: 150px;
+  height: 100vh;
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border-color);
   display: flex;
