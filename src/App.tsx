@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   Sparkles, BookOpen, List, FileText, Layers, 
-  Settings, Sun, Moon, ChevronRight, Sidebar
+  Settings, ChevronRight, Sidebar
 } from 'lucide-react';
 import { initializeDatabase } from './utils/db';
 import { WarRoom } from './components/AssistantMode/WarRoom';
@@ -13,7 +13,6 @@ type ModuleTab = 'JURNAL' | 'BUKUBESAR' | 'PERSEDIAAN' | 'LABARUGI' | 'NERACA' |
 
 function App() {
   const [activeTab, setActiveTab] = useState<ModuleTab>('JURNAL');
-  const [isLightMode, setIsLightMode] = useState(false);
   const [isDbReady, setIsDbReady] = useState(false);
   const [showPreviewPane, setShowPreviewPane] = useState(true);
   const [previewTab, setPreviewTab] = useState<'WARROOM' | 'CHAT'>('WARROOM');
@@ -30,17 +29,6 @@ function App() {
     };
     init();
   }, []);
-
-  // Toggle Tema
-  const toggleTheme = () => {
-    const nextTheme = !isLightMode;
-    setIsLightMode(nextTheme);
-    if (nextTheme) {
-      document.documentElement.classList.add('light-theme');
-    } else {
-      document.documentElement.classList.remove('light-theme');
-    }
-  };
 
   // Label Breadcrumbs berdasarkan tab aktif
   const getTabLabel = (tab: ModuleTab) => {
@@ -91,7 +79,7 @@ function App() {
         <aside className="sidebar-pane">
           <div>
             {/* Logo Section disatukan ke Sidebar Kiri */}
-            <div className="logo-section" style={{ padding: '2px 8px 10px 8px', borderBottom: '1px solid var(--border-color)', marginBottom: '8px' }}>
+            <div className="logo-section">
               <div className="logo-icon">A</div>
               <span className="logo-text">AKUNTA</span>
               <span className="logo-tag">Desktop</span>
@@ -152,7 +140,7 @@ function App() {
             </nav>
           </div>
 
-          {/* Theme Toggle & System Info disatukan ke Bawah Sidebar */}
+          {/* System Info di Bawah Sidebar */}
           <div style={{ 
             padding: '6px 8px 0 8px', 
             borderTop: '1px solid var(--border-color)', 
@@ -163,14 +151,7 @@ function App() {
             color: 'var(--text-muted)' 
           }}>
             <span>Offline-First</span>
-            <button 
-              className="chat-action-btn" 
-              style={{ margin: 0, width: '18px', height: '18px' }} 
-              onClick={toggleTheme} 
-              title="Ganti Tema"
-            >
-              {isLightMode ? <Moon size={11} /> : <Sun size={11} />}
-            </button>
+            <span>v0.1.0</span>
           </div>
         </aside>
 
