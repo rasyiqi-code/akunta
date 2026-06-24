@@ -1,5 +1,4 @@
 use rusqlite::{params, Connection};
-use serde::{Deserialize, Serialize};
 use crate::{SalesDocument, PurchaseDocument, Warehouse, StockTakeOrder, FixedAssetAdjustment};
 
 // Ambil semua dokumen penjualan beserta itemnya
