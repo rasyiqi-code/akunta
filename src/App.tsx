@@ -82,27 +82,19 @@ function App() {
 
   return (
     <div className="app-container">
-      {/* Header Utama (Sangat Ramping) */}
-      <header className="app-header">
-        <div className="logo-section">
-          <div className="logo-icon">A</div>
-          <span className="logo-text">AKUNTA</span>
-          <span className="logo-tag">Windows Layout</span>
-        </div>
-
-        <div className="header-actions">
-          <button className="btn btn-secondary btn-circle" style={{ width: '24px', height: '24px' }} onClick={toggleTheme} title="Ganti Tema">
-            {isLightMode ? <Moon size={13} /> : <Sun size={13} />}
-          </button>
-        </div>
-      </header>
-
       {/* Split Workspace */}
       <div className="workspace-container">
         
-        {/* PANEL KIRI: Navigation Pane (Windows Explorer Style) */}
+        {/* PANEL KIRI: Navigation Pane (Windows/GNOME Explorer Style) */}
         <aside className="sidebar-pane">
           <div>
+            {/* Logo Section disatukan ke Sidebar Kiri */}
+            <div className="logo-section" style={{ padding: '2px 8px 10px 8px', borderBottom: '1px solid var(--border-color)', marginBottom: '8px' }}>
+              <div className="logo-icon">A</div>
+              <span className="logo-text">AKUNTA</span>
+              <span className="logo-tag">Desktop</span>
+            </div>
+
             <div className="sidebar-section-title">Navigasi Utama</div>
             <nav className="sidebar-menu">
               <div 
@@ -158,8 +150,25 @@ function App() {
             </nav>
           </div>
 
-          <div style={{ padding: '0 12px 6px 12px', fontSize: '9.5px', color: 'var(--text-muted)' }}>
-            System Offline-First
+          {/* Theme Toggle & System Info disatukan ke Bawah Sidebar */}
+          <div style={{ 
+            padding: '6px 8px 0 8px', 
+            borderTop: '1px solid var(--border-color)', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'space-between',
+            fontSize: '9px', 
+            color: 'var(--text-muted)' 
+          }}>
+            <span>Offline-First</span>
+            <button 
+              className="chat-action-btn" 
+              style={{ margin: 0, width: '18px', height: '18px' }} 
+              onClick={toggleTheme} 
+              title="Ganti Tema"
+            >
+              {isLightMode ? <Moon size={11} /> : <Sun size={11} />}
+            </button>
           </div>
         </aside>
 

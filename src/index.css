@@ -104,65 +104,12 @@ body {
   width: 100vw;
 }
 
-/* Header Utama GNOME - Compact 30px */
-.app-header {
-  height: 30px;
-  background: var(--bg-sidebar);
-  border-bottom: 1px solid var(--border-color);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 10px;
-  z-index: 100;
-  flex-shrink: 0;
-}
-
-.logo-section {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.logo-icon {
-  width: 18px;
-  height: 18px;
-  background: var(--accent-primary);
-  border-radius: var(--radius-sm);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-weight: 700;
-  font-size: 10px;
-}
-
-.logo-text {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.logo-tag {
-  font-size: 8px;
-  background: var(--bg-app);
-  padding: 0 4px;
-  border-radius: var(--radius-sm);
-  color: var(--accent-primary);
-  border: 1px solid var(--border-color);
-}
-
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
 /* Split Workspace */
 .workspace-container {
   display: flex;
   flex-direction: row;
   flex: 1;
-  height: calc(100vh - 30px);
+  height: 100vh;
   overflow: hidden;
   position: relative;
 }
