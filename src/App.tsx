@@ -7,6 +7,7 @@ import { initializeDatabase } from './utils/db';
 import { WarRoom } from './components/AssistantMode/WarRoom';
 import { ChatInterface } from './components/AssistantMode/ChatInterface';
 import { LedgerDashboard } from './components/AccountantMode/LedgerDashboard';
+import { TitleBar } from './components/TitleBar';
 
 type ModuleTab = 'JURNAL' | 'BUKUBESAR' | 'PERSEDIAAN' | 'LABARUGI' | 'NERACA' | 'PAJAK';
 
@@ -82,6 +83,7 @@ function App() {
 
   return (
     <div className="app-container">
+      <TitleBar />
       {/* Split Workspace */}
       <div className="workspace-container">
         
