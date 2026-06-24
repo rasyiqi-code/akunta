@@ -8,6 +8,7 @@ import { WarRoom } from './components/AssistantMode/WarRoom';
 import { ChatInterface } from './components/AssistantMode/ChatInterface';
 import { LedgerDashboard } from './components/AccountantMode/LedgerDashboard';
 import { TitleBar } from './components/TitleBar';
+import { CommandMenu } from './components/CommandMenu';
 
 type ModuleTab = 'JURNAL' | 'BUKUBESAR' | 'PERSEDIAAN' | 'ASETTETAP' | 'LABARUGI' | 'NERACA' | 'PAJAK';
 
@@ -242,6 +243,7 @@ function App() {
 
         </div>
       </div>
+      <CommandMenu activeTab={activeTab} setActiveTab={setActiveTab} />
     </div>
   );
 }

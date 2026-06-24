@@ -836,3 +836,14 @@ body {
     transform: translateY(0);
   }
 }
+
+/* Command Menu Styles */
+.cmd-menu-item {
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.cmd-menu-item:hover {
+  background: rgba(255, 255, 255, 0.05) !important;
+  transform: translateX(2px);
+}
+
