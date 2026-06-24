@@ -16,6 +16,24 @@ import { getTaxSummary, generateEFakturCSV, generateEBupotCSV, type TaxTransacti
 import { getNarrativeAnalysis } from '../../utils/gemini';
 import * as XLSX from 'xlsx';
 
+const MonthlyDepreciationCell: React.FC<{ asset: any }> = ({ asset }) => {
+  const [value, setValue] = useState<number>(0);
+
+  useEffect(() => {
+    let active = true;
+    const fetchVal = async () => {
+      const val = await calculateMonthlyDepreciation(asset);
+      if (active) setValue(val);
+    };
+    fetchVal();
+    return () => {
+      active = false;
+    };
+  }, [asset]);
+
+  return <span>Rp {value.toLocaleString('id-ID')}</span>;
+};
+
 interface LedgerDashboardProps {
   activeTab: 'JURNAL' | 'BUKUBESAR' | 'PERSEDIAAN' | 'ASETTETAP' | 'LABARUGI' | 'NERACA' | 'PAJAK';
 }
@@ -826,7 +844,6 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
                   ) : (
                     fixedAssets.map(asset => {
                       const bookValue = asset.cost - asset.accumulatedDepreciation;
-                      const monthlyDepr = calculateMonthlyDepreciation(asset);
                       return (
                         <tr key={asset.id}>
                           <td><strong>{asset.name}</strong></td>
@@ -834,7 +851,7 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
                           <td style={{ textAlign: 'right' }}>Rp {asset.cost.toLocaleString('id-ID')}</td>
                           <td style={{ textAlign: 'right' }}>Rp {asset.salvageValue.toLocaleString('id-ID')}</td>
                           <td>{asset.usefulLifeYears} Tahun</td>
-                          <td style={{ textAlign: 'right' }}>Rp {monthlyDepr.toLocaleString('id-ID')}</td>
+                          <td style={{ textAlign: 'right' }}><MonthlyDepreciationCell asset={asset} /></td>
                           <td style={{ textAlign: 'right' }}>Rp {asset.accumulatedDepreciation.toLocaleString('id-ID')}</td>
                           <td style={{ textAlign: 'right', fontWeight: 600 }}>Rp {bookValue.toLocaleString('id-ID')}</td>
                           <td>

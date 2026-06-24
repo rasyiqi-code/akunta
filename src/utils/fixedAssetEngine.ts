@@ -7,11 +7,18 @@ import { invoke } from '@tauri-apps/api/core';
  * Menghitung penyusutan bulanan (Straight-Line)
  * Dipanggil secara lokal jika diperlukan untuk render cepat
  */
-export function calculateMonthlyDepreciation(asset: FixedAsset): number {
-  if (asset.usefulLifeYears <= 0) return 0;
-  const depreciableAmount = asset.cost - asset.salvageValue;
-  const totalMonths = asset.usefulLifeYears * 12;
-  return Math.round(depreciableAmount / totalMonths);
+export async function calculateMonthlyDepreciation(asset: FixedAsset): Promise<number> {
+  try {
+    return await invoke<number>('calculate_monthly_depreciation_rust', {
+      assetJson: JSON.stringify(asset)
+    });
+  } catch (err) {
+    console.warn('Gagal menghitung penyusutan di Rust, menggunakan fallback TS:', err);
+    if (asset.usefulLifeYears <= 0) return 0;
+    const depreciableAmount = asset.cost - asset.salvageValue;
+    const totalMonths = asset.usefulLifeYears * 12;
+    return Math.round(depreciableAmount / totalMonths);
+  }
 }
 
 /**

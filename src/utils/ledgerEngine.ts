@@ -1,5 +1,6 @@
 import { db } from './db';
 import type { JournalEntry } from '../types/ledger';
+import { invoke } from '@tauri-apps/api/core';
 
 // Helper untuk generate ID acak
 export function generateId(prefix: string): string {
@@ -7,17 +8,22 @@ export function generateId(prefix: string): string {
 }
 
 // Validasi apakah jurnal seimbang
-export function isJournalBalanced(entry: Omit<JournalEntry, 'id'> | JournalEntry): boolean {
-  const totalDebit = entry.lines.reduce((sum, line) => sum + line.debit, 0);
-  const totalCredit = entry.lines.reduce((sum, line) => sum + line.credit, 0);
-  
-  // Menggunakan toleransi pembulatan karena float
-  return Math.abs(totalDebit - totalCredit) < 0.01;
+export async function isJournalBalanced(entry: Omit<JournalEntry, 'id'> | JournalEntry): Promise<boolean> {
+  try {
+    return await invoke<boolean>('is_journal_balanced_rust', {
+      entryJson: JSON.stringify(entry)
+    });
+  } catch (err) {
+    console.warn('Gagal memvalidasi keseimbangan jurnal di Rust, menggunakan fallback TS:', err);
+    const totalDebit = entry.lines.reduce((sum, line) => sum + line.debit, 0);
+    const totalCredit = entry.lines.reduce((sum, line) => sum + line.credit, 0);
+    return Math.abs(totalDebit - totalCredit) < 0.01;
+  }
 }
 
 // Tambah Jurnal Baru dengan validasi
 export async function postJournalEntry(entry: Omit<JournalEntry, 'id'> & { id?: string }): Promise<string> {
-  if (!isJournalBalanced(entry)) {
+  if (!(await isJournalBalanced(entry))) {
     throw new Error('Jurnal tidak seimbang! Total Debit harus sama dengan total Kredit.');
   }
 
@@ -33,69 +39,93 @@ export async function postJournalEntry(entry: Omit<JournalEntry, 'id'> & { id?: 
 
 // Mengambil detail Buku Besar untuk satu akun
 export async function getGeneralLedger(accountCode: string) {
-  const journals = await db.journals.orderBy('date').toArray();
-  const account = await db.accounts.get(accountCode);
-  if (!account) throw new Error('Akun tidak ditemukan');
+  try {
+    const journals = await db.journals.toArray();
+    const account = await db.accounts.get(accountCode);
+    if (!account) throw new Error('Akun tidak ditemukan');
 
-  let runningBalance = 0;
-  const entries: {
-    id: string;
-    date: string;
-    description: string;
-    debit: number;
-    credit: number;
-    balance: number;
-  }[] = [];
+    const resultJson = await invoke<string>('generate_general_ledger_rust', {
+      journalsJson: JSON.stringify(journals),
+      accountJson: JSON.stringify(account)
+    });
+    return JSON.parse(resultJson);
+  } catch (err) {
+    console.warn('Gagal memproses buku besar di Rust, menggunakan fallback TS:', err);
+    const journals = await db.journals.orderBy('date').toArray();
+    const account = await db.accounts.get(accountCode);
+    if (!account) throw new Error('Akun tidak ditemukan');
 
-  for (const j of journals) {
-    const lines = j.lines.filter(l => l.accountCode === accountCode);
-    for (const l of lines) {
-      if (account.normalBalance === 'D') {
-        runningBalance += l.debit - l.credit;
-      } else {
-        runningBalance += l.credit - l.debit;
+    let runningBalance = 0;
+    const entries: {
+      id: string;
+      date: string;
+      description: string;
+      debit: number;
+      credit: number;
+      balance: number;
+    }[] = [];
+
+    for (const j of journals) {
+      const lines = j.lines.filter(l => l.accountCode === accountCode);
+      for (const l of lines) {
+        if (account.normalBalance === 'D') {
+          runningBalance += l.debit - l.credit;
+        } else {
+          runningBalance += l.credit - l.debit;
+        }
+        entries.push({
+          id: j.id,
+          date: j.date,
+          description: j.description,
+          debit: l.debit,
+          credit: l.credit,
+          balance: runningBalance
+        });
       }
-      entries.push({
-        id: j.id,
-        date: j.date,
-        description: j.description,
-        debit: l.debit,
-        credit: l.credit,
-        balance: runningBalance
-      });
     }
-  }
 
-  return { account, entries, finalBalance: runningBalance };
+    return { account, entries, finalBalance: runningBalance };
+  }
 }
 
 // Hitung saldo semua akun
 export async function getAccountBalances(): Promise<Record<string, number>> {
-  const accounts = await db.accounts.toArray();
-  const journals = await db.journals.toArray();
+  try {
+    const accounts = await db.accounts.toArray();
+    const journals = await db.journals.toArray();
+    const resultJson = await invoke<string>('get_account_balances_rust', {
+      accountsJson: JSON.stringify(accounts),
+      journalsJson: JSON.stringify(journals)
+    });
+    return JSON.parse(resultJson);
+  } catch (err) {
+    console.warn('Gagal memproses saldo akun di Rust, menggunakan fallback TS:', err);
+    const accounts = await db.accounts.toArray();
+    const journals = await db.journals.toArray();
 
-  const balances: Record<string, number> = {};
+    const balances: Record<string, number> = {};
 
-  // Inisialisasi saldo nol
-  for (const acc of accounts) {
-    balances[acc.code] = 0;
-  }
+    // Inisialisasi saldo nol
+    for (const acc of accounts) {
+      balances[acc.code] = 0;
+    }
 
-  // Akumulasikan dari jurnal
-  for (const j of journals) {
-    for (const line of j.lines) {
-      const acc = accounts.find(a => a.code === line.accountCode);
-      if (!acc) continue;
+    // Akumulasikan dari jurnal
+    for (const j of journals) {
+      for (const line of j.lines) {
+        const acc = accounts.find(a => a.code === line.accountCode);
+        if (!acc) continue;
 
-      if (acc.normalBalance === 'D') {
-        balances[line.accountCode] += line.debit - line.credit;
-      } else {
-        balances[line.accountCode] += line.credit - line.debit;
+        if (acc.normalBalance === 'D') {
+          balances[line.accountCode] += line.debit - line.credit;
+        } else {
+          balances[line.accountCode] += line.credit - line.debit;
+        }
       }
     }
-  }
 
-  return balances;
+    return balances;
+  }
 }
 
 // Hitung Laba Rugi
@@ -108,56 +138,69 @@ export interface ProfitLossReport {
 }
 
 export async function generateProfitLoss(startDate?: string, endDate?: string): Promise<ProfitLossReport> {
-  const accounts = await db.accounts.toArray();
-  let journals = await db.journals.toArray();
-
-  // Filter tanggal jika ada
-  if (startDate || endDate) {
-    journals = journals.filter(j => {
-      if (startDate && j.date < startDate) return false;
-      if (endDate && j.date > endDate) return false;
-      return true;
+  try {
+    const accounts = await db.accounts.toArray();
+    const journals = await db.journals.toArray();
+    const resultJson = await invoke<string>('generate_profit_loss_rust', {
+      accountsJson: JSON.stringify(accounts),
+      journalsJson: JSON.stringify(journals),
+      startDate: startDate || null,
+      endDate: endDate || null
     });
-  }
+    return JSON.parse(resultJson);
+  } catch (err) {
+    console.warn('Gagal memproses Laba Rugi di Rust, menggunakan fallback TS:', err);
+    const accounts = await db.accounts.toArray();
+    let journals = await db.journals.toArray();
 
-  const revenue: { code: string; name: string; amount: number }[] = [];
-  const expenses: { code: string; name: string; amount: number }[] = [];
+    // Filter tanggal jika ada
+    if (startDate || endDate) {
+      journals = journals.filter(j => {
+        if (startDate && j.date < startDate) return false;
+        if (endDate && j.date > endDate) return false;
+        return true;
+      });
+    }
 
-  let totalRevenue = 0;
-  let totalExpenses = 0;
+    const revenue: { code: string; name: string; amount: number }[] = [];
+    const expenses: { code: string; name: string; amount: number }[] = [];
 
-  for (const acc of accounts) {
-    if (acc.type !== 'PENDAPATAN' && acc.type !== 'BEBAN') continue;
+    let totalRevenue = 0;
+    let totalExpenses = 0;
 
-    let balance = 0;
-    for (const j of journals) {
-      for (const line of j.lines) {
-        if (line.accountCode === acc.code) {
-          if (acc.normalBalance === 'D') {
-            balance += line.debit - line.credit;
-          } else {
-            balance += line.credit - line.debit;
+    for (const acc of accounts) {
+      if (acc.type !== 'PENDAPATAN' && acc.type !== 'BEBAN') continue;
+
+      let balance = 0;
+      for (const j of journals) {
+        for (const line of j.lines) {
+          if (line.accountCode === acc.code) {
+            if (acc.normalBalance === 'D') {
+              balance += line.debit - line.credit;
+            } else {
+              balance += line.credit - line.debit;
+            }
           }
         }
       }
+
+      if (acc.type === 'PENDAPATAN') {
+        revenue.push({ code: acc.code, name: acc.name, amount: balance });
+        totalRevenue += balance;
+      } else {
+        expenses.push({ code: acc.code, name: acc.name, amount: balance });
+        totalExpenses += balance;
+      }
     }
 
-    if (acc.type === 'PENDAPATAN') {
-      revenue.push({ code: acc.code, name: acc.name, amount: balance });
-      totalRevenue += balance;
-    } else {
-      expenses.push({ code: acc.code, name: acc.name, amount: balance });
-      totalExpenses += balance;
-    }
+    return {
+      revenue,
+      expenses,
+      totalRevenue,
+      totalExpenses,
+      netProfit: totalRevenue - totalExpenses,
+    };
   }
-
-  return {
-    revenue,
-    expenses,
-    totalRevenue,
-    totalExpenses,
-    netProfit: totalRevenue - totalExpenses,
-  };
 }
 
 // Hitung Neraca (Balance Sheet)
@@ -171,49 +214,64 @@ export interface BalanceSheetReport {
 }
 
 export async function generateBalanceSheet(): Promise<BalanceSheetReport> {
-  const accounts = await db.accounts.toArray();
-  const balances = await getAccountBalances();
-  
-  // Hitung laba bersih berjalan untuk masuk ke ekuitas
-  const pl = await generateProfitLoss();
-  const netProfit = pl.netProfit;
+  try {
+    const accounts = await db.accounts.toArray();
+    const journals = await db.journals.toArray();
+    const pl = await generateProfitLoss();
+    const netProfit = pl.netProfit;
 
-  const assets: { code: string; name: string; amount: number }[] = [];
-  const liabilities: { code: string; name: string; amount: number }[] = [];
-  const equity: { code: string; name: string; amount: number }[] = [];
+    const resultJson = await invoke<string>('generate_balance_sheet_rust', {
+      accountsJson: JSON.stringify(accounts),
+      journalsJson: JSON.stringify(journals),
+      netProfit
+    });
+    return JSON.parse(resultJson);
+  } catch (err) {
+    console.warn('Gagal memproses Neraca di Rust, menggunakan fallback TS:', err);
+    const accounts = await db.accounts.toArray();
+    const balances = await getAccountBalances();
+    
+    // Hitung laba bersih berjalan untuk masuk ke ekuitas
+    const pl = await generateProfitLoss();
+    const netProfit = pl.netProfit;
 
-  let totalAssets = 0;
-  let totalLiabilities = 0;
-  let totalEquity = 0;
+    const assets: { code: string; name: string; amount: number }[] = [];
+    const liabilities: { code: string; name: string; amount: number }[] = [];
+    const equity: { code: string; name: string; amount: number }[] = [];
 
-  for (const acc of accounts) {
-    const balance = balances[acc.code] || 0;
+    let totalAssets = 0;
+    let totalLiabilities = 0;
+    let totalEquity = 0;
 
-    if (acc.type === 'ASET') {
-      assets.push({ code: acc.code, name: acc.name, amount: balance });
-      totalAssets += balance;
-    } else if (acc.type === 'KEWAJIBAN') {
-      liabilities.push({ code: acc.code, name: acc.name, amount: balance });
-      totalLiabilities += balance;
-    } else if (acc.type === 'EKUITAS') {
-      let finalBalance = balance;
-      // Jika Laba Ditahan, tambahkan laba bersih berjalan
-      if (acc.code === '3102') {
-        finalBalance += netProfit;
+    for (const acc of accounts) {
+      const balance = balances[acc.code] || 0;
+
+      if (acc.type === 'ASET') {
+        assets.push({ code: acc.code, name: acc.name, amount: balance });
+        totalAssets += balance;
+      } else if (acc.type === 'KEWAJIBAN') {
+        liabilities.push({ code: acc.code, name: acc.name, amount: balance });
+        totalLiabilities += balance;
+      } else if (acc.type === 'EKUITAS') {
+        let finalBalance = balance;
+        // Jika Laba Ditahan, tambahkan laba bersih berjalan
+        if (acc.code === '3102') {
+          finalBalance += netProfit;
+        }
+        equity.push({ code: acc.code, name: acc.name, amount: finalBalance });
+        totalEquity += finalBalance;
       }
-      equity.push({ code: acc.code, name: acc.name, amount: finalBalance });
-      totalEquity += finalBalance;
     }
-  }
 
-  return {
-    assets,
-    liabilities,
-    equity,
-    totalAssets,
-    totalLiabilities,
-    totalEquity: totalEquity,
-  };
+    return {
+      assets,
+      liabilities,
+      equity,
+      totalAssets,
+      totalLiabilities,
+      totalEquity,
+    };
+  }
 }
 
 // Backup & Restore

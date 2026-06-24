@@ -1,6 +1,7 @@
 import { db } from './db';
 import { generateId, postJournalEntry } from './ledgerEngine';
 import type { InventoryLog } from '../types/ledger';
+import { invoke } from '@tauri-apps/api/core';
 
 // Logika Pembelian Produk (Menambah Stok & hitung Average Cost)
 export async function purchaseProduct(
@@ -15,18 +16,34 @@ export async function purchaseProduct(
   const product = await db.products.get(productId);
   if (!product) throw new Error('Produk tidak ditemukan');
 
-  const currentStock = product.stockQty;
-  const currentAvgCost = product.averageCost;
-
-  // Hitung Average Cost Baru
-  const totalCost = (currentStock * currentAvgCost) + (qty * unitCost);
-  const newStock = currentStock + qty;
-  const newAvgCost = newStock > 0 ? Math.round(totalCost / newStock) : 0;
+  let updatedProduct;
+  try {
+    const resultJson = await invoke<string>('purchase_product_rust', {
+      productJson: JSON.stringify(product),
+      qty,
+      unitCost
+    });
+    const result = JSON.parse(resultJson);
+    updatedProduct = result.updatedProduct;
+  } catch (err) {
+    console.warn('Gagal memproses pembelian di Rust, menggunakan fallback TS:', err);
+    // Fallback TS
+    const currentStock = product.stockQty;
+    const currentAvgCost = product.averageCost;
+    const totalCost = (currentStock * currentAvgCost) + (qty * unitCost);
+    const newStock = currentStock + qty;
+    const newAvgCost = newStock > 0 ? Math.round(totalCost / newStock) : 0;
+    updatedProduct = {
+      ...product,
+      stockQty: newStock,
+      averageCost: newAvgCost
+    };
+  }
 
   // Perbarui data produk
   await db.products.update(productId, {
-    stockQty: newStock,
-    averageCost: newAvgCost
+    stockQty: updatedProduct.stockQty,
+    averageCost: updatedProduct.averageCost
   });
 
   // Catat Log Mutasi
@@ -56,17 +73,39 @@ export async function sellProduct(
   const product = await db.products.get(productId);
   if (!product) throw new Error('Produk tidak ditemukan');
 
-  if (product.stockQty < qty) {
-    throw new Error(`Stok produk "${product.name}" tidak mencukupi. Sisa stok: ${product.stockQty} unit.`);
-  }
+  let updatedProduct;
+  let totalHpp;
 
-  const hppPerUnit = product.averageCost;
-  const totalHpp = qty * hppPerUnit;
-  const newStock = product.stockQty - qty;
+  try {
+    const resultJson = await invoke<string>('sell_product_rust', {
+      productJson: JSON.stringify(product),
+      qty
+    });
+    const result = JSON.parse(resultJson);
+    updatedProduct = result.updatedProduct;
+    totalHpp = result.totalHpp;
+  } catch (err: any) {
+    console.warn('Gagal memproses penjualan di Rust, menggunakan fallback TS:', err);
+    if (err && typeof err === 'string' && err.includes('tidak mencukupi')) {
+      throw new Error(err);
+    }
+    if (product.stockQty < qty) {
+      throw new Error(`Stok produk "${product.name}" tidak mencukupi. Sisa stok: ${product.stockQty} unit.`);
+    }
+
+    // Fallback TS
+    const hppPerUnit = product.averageCost;
+    totalHpp = qty * hppPerUnit;
+    const newStock = product.stockQty - qty;
+    updatedProduct = {
+      ...product,
+      stockQty: newStock
+    };
+  }
 
   // Perbarui kuantitas stok produk
   await db.products.update(productId, {
-    stockQty: newStock
+    stockQty: updatedProduct.stockQty
   });
 
   // Catat Log Mutasi
@@ -77,7 +116,7 @@ export async function sellProduct(
     date,
     type: 'KELUAR',
     qty,
-    cost: hppPerUnit,
+    cost: product.averageCost,
     reference: refJournalId
   };
   await db.inventoryLogs.add(log);
@@ -109,14 +148,38 @@ export async function adjustProductStock(
   const product = await db.products.get(productId);
   if (!product) throw new Error('Produk tidak ditemukan');
 
-  const diff = newQty - product.stockQty;
-  if (diff === 0) return;
+  let updatedProduct;
+  let diff;
+  let absQty;
+  let totalVal;
 
-  const absQty = Math.abs(diff);
+  try {
+    const resultJson = await invoke<string>('adjust_product_stock_rust', {
+      productJson: JSON.stringify(product),
+      newQty
+    });
+    const result = JSON.parse(resultJson);
+    updatedProduct = result.updatedProduct;
+    diff = result.diff;
+    absQty = result.absQty;
+    totalVal = result.totalVal;
+  } catch (err) {
+    console.warn('Gagal memproses penyesuaian stok di Rust, menggunakan fallback TS:', err);
+    // Fallback TS
+    diff = newQty - product.stockQty;
+    absQty = Math.abs(diff);
+    totalVal = absQty * product.averageCost;
+    updatedProduct = {
+      ...product,
+      stockQty: newQty
+    };
+  }
+
+  if (diff === 0) return;
 
   // Perbarui kuantitas stok
   await db.products.update(productId, {
-    stockQty: newQty
+    stockQty: updatedProduct.stockQty
   });
 
   // Catat Log
@@ -133,7 +196,6 @@ export async function adjustProductStock(
   await db.inventoryLogs.add(log);
 
   // Jurnal penyesuaian nilai persediaan di GL
-  const totalVal = absQty * product.averageCost;
   if (totalVal > 0) {
     if (diff > 0) {
       // Penyesuaian positif (stok bertambah): Debit Persediaan (1105), Kredit Beban Operasional Lainnya (5206) sebagai pengurang beban
