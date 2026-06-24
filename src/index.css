@@ -825,6 +825,27 @@ body {
   border-color: var(--border-focus);
 }
 
+/* Memperbaiki dropdown select & option pada WebKitGTK/Linux agar teks tidak hitam di atas hitam */
+select {
+  color: #ffffff !important;
+}
+
+select option {
+  background-color: #12131a !important;
+  color: #ffffff !important;
+}
+
+/* Memperbaiki date picker di webview bertema gelap */
+input[type="date"] {
+  color-scheme: dark;
+  color: #ffffff !important;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  cursor: pointer;
+}
+
 /* Animasi */
 @keyframes slideUp {
   from {
