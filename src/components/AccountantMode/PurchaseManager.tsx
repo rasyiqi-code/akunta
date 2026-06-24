@@ -171,7 +171,7 @@ export const PurchaseManager: React.FC = () => {
   };
 
   return (
-    <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px', color: '#f3f4f6' }}>
+    <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px', color: 'var(--text-primary)' }}>
       
       {/* Purchase Analytics Widgets */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px' }}>
