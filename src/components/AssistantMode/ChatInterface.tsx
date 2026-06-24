@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { Send, Sparkles, Check, X, Camera, FileSpreadsheet, Play } from 'lucide-react';
-import { db, DEFAULT_ACCOUNTS } from '../../utils/db';
+import { db } from '../../utils/db';
 import { parseInputWithGemini, getNarrativeAnalysis } from '../../utils/gemini';
 import { postJournalEntry, generateProfitLoss, generateBalanceSheet } from '../../utils/ledgerEngine';
 import { purchaseProduct, sellProduct } from '../../utils/inventoryEngine';
@@ -67,6 +67,16 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onReportRequested 
 
   // Ambil data chat dari SQLite backend via React State
   const [messages, setMessages] = useState<any[]>([]);
+  const [accounts, setAccounts] = useState<any[]>([]);
+
+  const fetchAccounts = async () => {
+    try {
+      const list = await db.accounts.toArray();
+      setAccounts(list);
+    } catch (err) {
+      console.error('Gagal mengambil data akun di asisten AI:', err);
+    }
+  };
 
   const fetchMessages = async () => {
     const list = await db.chatMessages.toArray();
@@ -81,11 +91,13 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onReportRequested 
       unlistenFn = await listen('db-update', () => {
         if (active) {
           fetchMessages();
+          fetchAccounts();
         }
       });
     };
 
     fetchMessages();
+    fetchAccounts();
     setupListener();
 
     return () => {
@@ -350,7 +362,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onReportRequested 
                       className={`jurnal-line-row ${line.credit > 0 ? 'credit' : 'debit'}`}
                     >
                       <span style={{ color: line.credit > 0 ? 'var(--text-secondary)' : 'var(--text-primary)' }}>
-                        {line.accountCode} - {DEFAULT_ACCOUNTS.find((a: any) => a.code === line.accountCode)?.name || 'Akun'}
+                        {line.accountCode} - {accounts.find((a: any) => a.code === line.accountCode)?.name || 'Akun'}
                       </span>
                       <span className="amount-col" style={{ color: line.credit > 0 ? 'var(--accent-warning)' : 'var(--accent-success)' }}>
                         {line.debit > 0 

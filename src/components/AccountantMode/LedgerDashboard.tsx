@@ -4,7 +4,7 @@ import {
   FileSpreadsheet, Database, Play, CheckCircle, 
   AlertTriangle, Upload, Download, Plus, Sparkles, X, Trash2
 } from 'lucide-react';
-import { db, DEFAULT_ACCOUNTS } from '../../utils/db';
+import { db } from '../../utils/db';
 import { invoke } from '@tauri-apps/api/core';
 import { 
   generateProfitLoss, generateBalanceSheet, postJournalEntry, 
@@ -361,7 +361,7 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
             'Tanggal': j.date,
             'Deskripsi': j.description,
             'Kode Akun': l.accountCode,
-            'Nama Akun': DEFAULT_ACCOUNTS.find(a => a.code === l.accountCode)?.name || '',
+            'Nama Akun': accounts.find(a => a.code === l.accountCode)?.name || '',
             'Debit (Rp)': l.debit,
             'Kredit (Rp)': l.credit,
             'Anomali': j.isAnomaly ? 'YA' : 'TIDAK'
