@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { Account, JournalEntry, Contact, BankStatementItem, Product, InventoryLog, FixedAsset } from '../types/ledger';
+import type { Account, JournalEntry, Contact, BankStatementItem, Product, InventoryLog, FixedAsset, Warehouse, StockTakeOrder } from '../types/ledger';
 
 // Interface untuk riwayat obrolan di Mode Asisten
 export interface ChatMessage {
@@ -8,7 +8,7 @@ export interface ChatMessage {
   text: string;
   timestamp: string;
   cardType?: 'CONFIRMATION' | 'STORY_REPORT' | 'ALERT' | 'TRANSACTION_SUCCESS';
-  cardData?: any; 
+  cardData?: any;
   imageUrl?: string; // Menyimpan data URL gambar Base64
 }
 
@@ -33,7 +33,7 @@ export const db = {
       return accounts.find(a => a.code === code);
     }
   },
-  
+
   journals: {
     toArray: async (): Promise<JournalEntry[]> => {
       try {
@@ -50,7 +50,7 @@ export const db = {
       });
     }
   },
-  
+
   chatMessages: {
     toArray: async (): Promise<ChatMessage[]> => {
       try {
@@ -92,7 +92,7 @@ export const db = {
       return await invoke<void>('clear_chat_messages_rust');
     }
   },
-  
+
   products: {
     toArray: async (): Promise<Product[]> => {
       try {
@@ -119,7 +119,7 @@ export const db = {
       return;
     }
   },
-  
+
   inventoryLogs: {
     toArray: async (): Promise<InventoryLog[]> => {
       try {
@@ -131,7 +131,7 @@ export const db = {
       }
     }
   },
-  
+
   fixedAssets: {
     toArray: async (): Promise<FixedAsset[]> => {
       try {
@@ -161,7 +161,7 @@ export const db = {
       return;
     }
   },
-  
+
   bankStatements: {
     toArray: async (): Promise<BankStatementItem[]> => {
       try {
@@ -178,7 +178,7 @@ export const db = {
       return;
     }
   },
-  
+
   contacts: {
     toArray: async (): Promise<Contact[]> => {
       // Mengambil kontak jika perlu, dummy untuk demo
@@ -188,6 +188,69 @@ export const db = {
         { id: 'v-01', name: 'Supplier Kopi Indonesia', type: 'VENDOR' },
         { id: 'v-02', name: 'PLN Persero', type: 'VENDOR' },
       ];
+    }
+  },
+
+  salesDocuments: {
+    toArray: async (): Promise<any[]> => {
+      try {
+        const res = await invoke<string>('get_sales_documents_rust');
+        return JSON.parse(res);
+      } catch (err) {
+        console.error('Error fetching sales documents:', err);
+        return [];
+      }
+    },
+    add: async (doc: any): Promise<void> => {
+      await invoke<void>('create_sales_document_rust', {
+        docJson: JSON.stringify(doc)
+      });
+    }
+  },
+
+  purchaseDocuments: {
+    toArray: async (): Promise<any[]> => {
+      try {
+        const res = await invoke<string>('get_purchase_documents_rust');
+        return JSON.parse(res);
+      } catch (err) {
+        console.error('Error fetching purchase documents:', err);
+        return [];
+      }
+    },
+    add: async (doc: any): Promise<void> => {
+      await invoke<void>('create_purchase_document_rust', {
+        docJson: JSON.stringify(doc)
+      });
+    }
+  },
+
+  warehouses: {
+    toArray: async (): Promise<Warehouse[]> => {
+      try {
+        const res = await invoke<string>('get_warehouses_rust');
+        return JSON.parse(res);
+      } catch (err) {
+        console.error('Error fetching warehouses:', err);
+        return [];
+      }
+    }
+  },
+
+  stockTakes: {
+    toArray: async (): Promise<StockTakeOrder[]> => {
+      try {
+        const res = await invoke<string>('get_stock_takes_rust');
+        return JSON.parse(res);
+      } catch (err) {
+        console.error('Error fetching stock takes:', err);
+        return [];
+      }
+    },
+    add: async (order: StockTakeOrder): Promise<void> => {
+      await invoke<void>('create_stock_take_rust', {
+        orderJson: JSON.stringify(order)
+      });
     }
   }
 };

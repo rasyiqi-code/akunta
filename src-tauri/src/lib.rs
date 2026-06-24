@@ -6,6 +6,7 @@ use std::sync::Mutex;
 use rusqlite::Connection;
 
 mod db;
+mod accounting;
 
 // State untuk menyimpan koneksi database SQLite secara thread-safe
 pub struct DbState(pub Mutex<Connection>);
@@ -29,6 +30,108 @@ struct FixedAsset {
     accumulated_depreciation: f64,
     #[serde(rename = "isFullyDepreciated")]
     is_fully_depreciated: Option<bool>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct SalesDocumentItem {
+    id: Option<i64>,
+    #[serde(rename = "documentId")]
+    document_id: String,
+    #[serde(rename = "productId")]
+    product_id: String,
+    qty: f64,
+    price: f64,
+    discount: f64,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct SalesDocument {
+    id: String,
+    date: String,
+    #[serde(rename = "contactId")]
+    contact_id: String,
+    #[serde(rename = "type")]
+    doc_type: String, // 'QUOTATION' | 'ORDER' | 'DELIVERY' | 'INVOICE' | 'RETURN'
+    status: String, // 'PENDING' | 'COMPLETED' | 'CANCELLED'
+    #[serde(rename = "referenceId")]
+    reference_id: Option<String>,
+    #[serde(rename = "totalAmount")]
+    total_amount: f64,
+    #[serde(rename = "dpApplied")]
+    dp_applied: f64,
+    items: Option<Vec<SalesDocumentItem>>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct PurchaseDocumentItem {
+    id: Option<i64>,
+    #[serde(rename = "documentId")]
+    document_id: String,
+    #[serde(rename = "productId")]
+    product_id: String,
+    qty: f64,
+    price: f64,
+    discount: f64,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct PurchaseDocument {
+    id: String,
+    date: String,
+    #[serde(rename = "contactId")]
+    contact_id: String,
+    #[serde(rename = "type")]
+    doc_type: String, // 'ORDER' | 'RECEIPT' | 'INVOICE' | 'RETURN'
+    status: String, // 'PENDING' | 'COMPLETED' | 'CANCELLED'
+    #[serde(rename = "referenceId")]
+    reference_id: Option<String>,
+    #[serde(rename = "totalAmount")]
+    total_amount: f64,
+    #[serde(rename = "dpApplied")]
+    dp_applied: f64,
+    items: Option<Vec<PurchaseDocumentItem>>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct Warehouse {
+    id: String,
+    name: String,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct StockTakeItem {
+    id: Option<i64>,
+    #[serde(rename = "stockTakeId")]
+    stock_take_id: String,
+    #[serde(rename = "productId")]
+    product_id: String,
+    #[serde(rename = "systemQty")]
+    system_qty: f64,
+    #[serde(rename = "physicalQty")]
+    physical_qty: f64,
+    #[serde(rename = "diffQty")]
+    diff_qty: f64,
+    cost: f64,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct StockTakeOrder {
+    id: String,
+    date: String,
+    status: String, // 'DRAFT' | 'COMPLETED'
+    items: Option<Vec<StockTakeItem>>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct FixedAssetAdjustment {
+    id: String,
+    #[serde(rename = "assetId")]
+    asset_id: String,
+    date: String,
+    #[serde(rename = "type")]
+    adj_type: String, // 'REVALUATION' | 'IMPAIRMENT'
+    amount: f64,
+    description: String,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -2308,6 +2411,68 @@ fn generate_cash_flow_rust(state: tauri::State<DbState>) -> Result<String, Strin
     serde_json::to_string(&report).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn get_sales_documents_rust(state: tauri::State<'_, DbState>) -> Result<String, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let docs = accounting::get_sales_documents(&conn)?;
+    serde_json::to_string(&docs).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn create_sales_document_rust(state: tauri::State<'_, DbState>, doc_json: String) -> Result<String, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let doc: SalesDocument = serde_json::from_str(&doc_json).map_err(|e| e.to_string())?;
+    accounting::create_sales_document(&conn, doc)
+}
+
+#[tauri::command]
+fn get_purchase_documents_rust(state: tauri::State<'_, DbState>) -> Result<String, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let docs = accounting::get_purchase_documents(&conn)?;
+    serde_json::to_string(&docs).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn create_purchase_document_rust(state: tauri::State<'_, DbState>, doc_json: String) -> Result<String, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let doc: PurchaseDocument = serde_json::from_str(&doc_json).map_err(|e| e.to_string())?;
+    accounting::create_purchase_document(&conn, doc)
+}
+
+#[tauri::command]
+fn get_warehouses_rust(state: tauri::State<'_, DbState>) -> Result<String, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let list = accounting::get_warehouses(&conn)?;
+    serde_json::to_string(&list).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_stock_takes_rust(state: tauri::State<'_, DbState>) -> Result<String, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let list = accounting::get_stock_takes(&conn)?;
+    serde_json::to_string(&list).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn create_stock_take_rust(state: tauri::State<'_, DbState>, order_json: String) -> Result<String, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let order: StockTakeOrder = serde_json::from_str(&order_json).map_err(|e| e.to_string())?;
+    accounting::create_stock_take(&conn, order)
+}
+
+#[tauri::command]
+fn dispose_fixed_asset_rust(state: tauri::State<'_, DbState>, asset_id: String, disposal_date: String, disposal_value: f64) -> Result<String, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    accounting::dispose_fixed_asset(&conn, &asset_id, &disposal_date, disposal_value)
+}
+
+#[tauri::command]
+fn adjust_fixed_asset_rust(state: tauri::State<'_, DbState>, adj_json: String) -> Result<String, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let adj: FixedAssetAdjustment = serde_json::from_str(&adj_json).map_err(|e| e.to_string())?;
+    accounting::adjust_fixed_asset(&conn, adj)
+}
+
 // ==========================================
 // ENTRY POINT RUN & ROUTING HANDLER
 // ==========================================
@@ -2364,7 +2529,16 @@ pub fn run() {
             extract_ocr_details_rust,
             analyze_report_health_rust,
             export_backup_json_rust,
-            import_backup_json_rust
+            import_backup_json_rust,
+            get_sales_documents_rust,
+            create_sales_document_rust,
+            get_purchase_documents_rust,
+            create_purchase_document_rust,
+            get_warehouses_rust,
+            get_stock_takes_rust,
+            create_stock_take_rust,
+            dispose_fixed_asset_rust,
+            adjust_fixed_asset_rust
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

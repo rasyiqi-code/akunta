@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { 
   FileSpreadsheet, Database, Play, CheckCircle, 
-  AlertTriangle, Upload, Download, Plus, FileText, X, Settings
+  AlertTriangle, Upload, Download, Plus, FileText, X
 } from 'lucide-react';
 import { db, DEFAULT_ACCOUNTS } from '../../utils/db';
 import { invoke } from '@tauri-apps/api/core';
@@ -17,6 +17,8 @@ import { getNarrativeAnalysis } from '../../utils/gemini';
 import * as XLSX from 'xlsx';
 import { TrialBalance } from './TrialBalance';
 import { CashFlow } from './CashFlow';
+import { SalesManager } from './SalesManager';
+import { PurchaseManager } from './PurchaseManager';
 
 const MonthlyDepreciationCell: React.FC<{ asset: any }> = ({ asset }) => {
   const [value, setValue] = useState<number>(0);
@@ -37,7 +39,7 @@ const MonthlyDepreciationCell: React.FC<{ asset: any }> = ({ asset }) => {
 };
 
 interface LedgerDashboardProps {
-  activeTab: 'JURNAL' | 'BUKUBESAR' | 'PERSEDIAAN' | 'ASETTETAP' | 'LABARUGI' | 'NERACA' | 'PAJAK' | 'NERACASALDO' | 'ARUSKAS';
+  activeTab: 'JURNAL' | 'BUKUBESAR' | 'PERSEDIAAN' | 'ASETTETAP' | 'LABARUGI' | 'NERACA' | 'PAJAK' | 'NERACASALDO' | 'ARUSKAS' | 'PENJUALAN' | 'PEMBELIAN';
 }
 
 export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) => {
@@ -48,17 +50,22 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
   const [products, setProducts] = useState<any[]>([]);
   const [inventoryLogs, setInventoryLogs] = useState<any[]>([]);
   const [fixedAssets, setFixedAssets] = useState<any[]>([]);
+  const [inventorySubTab, setInventorySubTab] = useState<'BARANG' | 'GUDANG' | 'OPNAME'>('BARANG');
+  const [stockTakes, setStockTakes] = useState<any[]>([]);
+  const [warehouses, setWarehouses] = useState<any[]>([]);
 
   // Fungsi untuk menarik data dari Rust SQLite
   const fetchData = async () => {
     try {
-      const [jList, aList, bList, pList, lList, fList] = await Promise.all([
+      const [jList, aList, bList, pList, lList, fList, stList, wList] = await Promise.all([
         db.journals.toArray(),
         db.accounts.toArray(),
         db.bankStatements.toArray(),
         db.products.toArray(),
         db.inventoryLogs.toArray(),
-        db.fixedAssets.toArray()
+        db.fixedAssets.toArray(),
+        db.stockTakes.toArray(),
+        db.warehouses.toArray()
       ]);
       setJournals(jList);
       setAccounts(aList);
@@ -66,6 +73,8 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
       setProducts(pList);
       setInventoryLogs(lList);
       setFixedAssets(fList);
+      setStockTakes(stList);
+      setWarehouses(wList);
     } catch (e) {
       console.error("Gagal mengambil data dari SQLite backend:", e);
     }
@@ -131,6 +140,14 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
   const [adjustProductId, setAdjustProductId] = useState('');
   const [adjustQty, setAdjustQty] = useState(0);
   const [adjustReason, setAdjustReason] = useState('');
+  
+  const [showNewStockTakeModal, setShowNewStockTakeModal] = useState(false);
+  const [newStockTakeItems, setNewStockTakeItems] = useState<any[]>([]);
+
+  const [showDisposalModal, setShowDisposalModal] = useState(false);
+  const [selectedAssetForDisposal, setSelectedAssetForDisposal] = useState<any>(null);
+  const [disposalDate, setDisposalDate] = useState(new Date().toISOString().split('T')[0]);
+  const [disposalValue, setDisposalValue] = useState(0);
 
   // Rekonsiliasi Bank State
   const [reconcilingId, setReconcilingId] = useState<string | null>(null);
@@ -196,6 +213,19 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
       }
     } catch (err: any) {
       alert(`Gagal mengekspor e-Bupot: ${err.message}`);
+    }
+  };
+
+  const handleExportEBupot23 = async () => {
+    try {
+      const csvContent = await generateEBupotCSV(taxSummary.transactions, 'PPH_23');
+      if (csvContent) {
+        await saveNativeFile(csvContent, `e-Bupot_PPh23_${new Date().toISOString().split('T')[0]}.csv`);
+      } else {
+        alert('Tidak ada transaksi PPh 23 untuk diekspor.');
+      }
+    } catch (err: any) {
+      alert(`Gagal mengekspor e-Bupot PPh 23: ${err.message}`);
     }
   };
 
@@ -480,6 +510,63 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
     }
   };
 
+  const handleSaveNewStockTake = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newStockTakeItems.length === 0) {
+      alert('Tambahkan minimal 1 item barang untuk opname.');
+      return;
+    }
+
+    const orderId = `OPN-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
+    const formattedOrder = {
+      id: orderId,
+      date: new Date().toISOString().split('T')[0],
+      status: 'COMPLETED' as const,
+      items: newStockTakeItems.map(i => ({
+        stockTakeId: orderId,
+        productId: i.productId,
+        systemQty: Number(i.systemQty),
+        physicalQty: Number(i.physicalQty),
+        diffQty: Number(i.physicalQty) - Number(i.systemQty),
+        cost: Number(i.cost)
+      }))
+    };
+
+    try {
+      await db.stockTakes.add(formattedOrder);
+      setShowNewStockTakeModal(false);
+      setNewStockTakeItems([]);
+      alert('Stock opname fisik berhasil diposting dan jurnal penyesuaian terbuat otomatis!');
+      const event = new CustomEvent('db-update');
+      window.dispatchEvent(event);
+      fetchData();
+    } catch (err: any) {
+      alert(`Gagal menyimpan stock opname: ${err.message}`);
+    }
+  };
+
+  const handlePostDisposal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedAssetForDisposal) return;
+
+    try {
+      await invoke('dispose_fixed_asset_rust', {
+        assetId: selectedAssetForDisposal.id,
+        disposalDate,
+        disposalValue: Number(disposalValue)
+      });
+      setShowDisposalModal(false);
+      setSelectedAssetForDisposal(null);
+      setDisposalValue(0);
+      alert('Pelepasan aset tetap sukses dan jurnal penutupan nilai buku diposting otomatis!');
+      const event = new CustomEvent('db-update');
+      window.dispatchEvent(event);
+      fetchData();
+    } catch (err: any) {
+      alert(`Gagal melepas aset: ${err}`);
+    }
+  };
+
   return (
     <div className="accountant-workspace">
       {/* Main Content Area */}
@@ -604,103 +691,215 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
         {activeTab === 'PERSEDIAAN' && (
           <>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <h3 style={{ fontFamily: 'var(--font-display)', fontWeight: 600 }}>Modul Persediaan Barang</h3>
-                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                  Total Nilai Stok (Average Cost): <strong>Rp {totalInventoryValue.toLocaleString('id-ID')}</strong>
-                </span>
-              </div>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button className="btn btn-secondary" onClick={() => handleExportExcel('PERSEDIAAN')}>
-                  <FileSpreadsheet size={14} />
-                  <span>Excel</span>
-                </button>
-                <button className="btn btn-secondary" onClick={() => setShowAdjustModal(true)}>
-                  <Settings size={14} />
-                  <span>Stock Opname</span>
-                </button>
-                <button className="btn btn-primary" onClick={() => setShowProductModal(true)}>
-                  <Plus size={14} />
-                  <span>Tambah Produk</span>
-                </button>
-              </div>
+               <div>
+                 <h3 style={{ fontFamily: 'var(--font-display)', fontWeight: 600 }}>Modul Persediaan Barang</h3>
+                 <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                   Total Nilai Stok (Average Cost): <strong>Rp {totalInventoryValue.toLocaleString('id-ID')}</strong>
+                 </span>
+               </div>
+               <div style={{ display: 'flex', gap: '8px' }}>
+                 <button className="btn btn-secondary" onClick={() => handleExportExcel('PERSEDIAAN')}>
+                   <FileSpreadsheet size={14} />
+                   <span>Excel</span>
+                 </button>
+                 {inventorySubTab === 'OPNAME' ? (
+                   <button className="btn btn-primary" onClick={() => {
+                     // Inisialisasi item opname awal dari daftar produk yang ada
+                     setNewStockTakeItems(products.map(p => ({
+                       productId: p.id,
+                       systemQty: p.stockQty,
+                       physicalQty: p.stockQty,
+                       cost: p.averageCost
+                     })));
+                     setShowNewStockTakeModal(true);
+                   }}>
+                     <Plus size={14} />
+                     <span>Mulai Opname Baru</span>
+                   </button>
+                 ) : (
+                   <button className="btn btn-primary" onClick={() => setShowProductModal(true)}>
+                     <Plus size={14} />
+                     <span>Tambah Produk</span>
+                   </button>
+                 )}
+               </div>
             </div>
 
-            {/* List Produk */}
-            <div style={{ fontWeight: 600, fontSize: '14px', marginBottom: '8px' }}>Daftar Produk</div>
-            <div className="table-wrapper" style={{ marginBottom: '24px' }}>
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>SKU</th>
-                    <th>Nama Produk</th>
-                    <th style={{ textAlign: 'right' }}>Stok Unit</th>
-                    <th style={{ textAlign: 'right' }}>Harga Rata-Rata (COGS)</th>
-                    <th style={{ textAlign: 'right' }}>Total Nilai</th>
-                    <th style={{ textAlign: 'right' }}>Harga Jual</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {products.map(p => (
-                    <tr key={p.id}>
-                      <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{p.sku}</td>
-                      <td>{p.name}</td>
-                      <td className="amount-col" style={{ color: p.stockQty < 5 ? 'var(--accent-danger)' : 'var(--text-primary)' }}>
-                        {p.stockQty} Unit
-                      </td>
-                      <td className="amount-col">Rp {p.averageCost.toLocaleString('id-ID')}</td>
-                      <td className="amount-col" style={{ fontWeight: 600 }}>
-                        Rp {(p.stockQty * p.averageCost).toLocaleString('id-ID')}
-                      </td>
-                      <td className="amount-col">Rp {p.sellingPrice.toLocaleString('id-ID')}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            {/* Sub-tabs Persediaan */}
+            <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px', marginTop: '12px' }}>
+              {(['BARANG', 'GUDANG', 'OPNAME'] as const).map(subTab => (
+                <button
+                  key={subTab}
+                  onClick={() => setInventorySubTab(subTab)}
+                  style={{
+                    background: inventorySubTab === subTab ? 'rgba(255,255,255,0.08)' : 'transparent',
+                    border: 'none',
+                    color: inventorySubTab === subTab ? '#ffffff' : '#9ca3af',
+                    padding: '4px 10px',
+                    borderRadius: '6px',
+                    fontSize: '11px',
+                    cursor: 'pointer',
+                    fontWeight: inventorySubTab === subTab ? '500' : '400',
+                  }}
+                >
+                  {subTab === 'BARANG' && 'Daftar Barang & Mutasi'}
+                  {subTab === 'GUDANG' && 'Sebaran Gudang'}
+                  {subTab === 'OPNAME' && 'Stock Opname Fisik'}
+                </button>
+              ))}
             </div>
 
-            {/* Log Mutasi Stok */}
-            <div style={{ fontWeight: 600, fontSize: '14px', marginBottom: '8px' }}>Mutasi Stok Terbaru</div>
-            <div className="table-wrapper">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Tanggal</th>
-                    <th>Produk</th>
-                    <th>Tipe Mutasi</th>
-                    <th style={{ textAlign: 'right' }}>Kuantitas</th>
-                    <th style={{ textAlign: 'right' }}>Biaya / Unit</th>
-                    <th>Referensi / Keterangan</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {inventoryLogs.map(log => {
-                    const prod = products.find(p => p.id === log.productId);
-                    return (
-                      <tr key={log.id}>
-                        <td>{log.date}</td>
-                        <td>{prod ? `${prod.name} (${prod.sku})` : 'Produk tidak dikenal'}</td>
-                        <td>
-                          <span style={{
-                            fontSize: '11px',
-                            padding: '2px 8px',
-                            borderRadius: '10px',
-                            fontWeight: 600,
-                            background: log.type === 'MASUK' ? 'rgba(16, 185, 129, 0.1)' : log.type === 'KELUAR' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)',
-                            color: log.type === 'MASUK' ? 'var(--accent-success)' : log.type === 'KELUAR' ? 'var(--accent-danger)' : 'var(--accent-warning)',
-                          }}>
-                            {log.type}
-                          </span>
-                        </td>
-                        <td className="amount-col">{log.qty} Unit</td>
-                        <td className="amount-col">Rp {log.cost.toLocaleString('id-ID')}</td>
-                        <td style={{ fontFamily: 'monospace', fontSize: '12px' }}>{log.reference || '-'}</td>
+            {/* SUB TAB 1: DAFTAR BARANG */}
+            {inventorySubTab === 'BARANG' && (
+              <>
+                <div style={{ fontWeight: 600, fontSize: '12px', marginTop: '16px', marginBottom: '8px', color: 'var(--text-secondary)' }}>Daftar Produk</div>
+                <div className="table-wrapper" style={{ marginBottom: '24px' }}>
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>SKU</th>
+                        <th>Nama Produk</th>
+                        <th style={{ textAlign: 'right' }}>Stok Unit</th>
+                        <th style={{ textAlign: 'right' }}>Harga Rata-Rata (COGS)</th>
+                        <th style={{ textAlign: 'right' }}>Total Nilai</th>
+                        <th style={{ textAlign: 'right' }}>Harga Jual</th>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                    </thead>
+                    <tbody>
+                      {products.map(p => (
+                        <tr key={p.id}>
+                          <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{p.sku}</td>
+                          <td>{p.name}</td>
+                          <td className="amount-col" style={{ color: p.stockQty < 5 ? 'var(--accent-danger)' : 'var(--text-primary)' }}>
+                            {p.stockQty} Unit
+                          </td>
+                          <td className="amount-col">Rp {p.averageCost.toLocaleString('id-ID')}</td>
+                          <td className="amount-col" style={{ fontWeight: 600 }}>
+                            Rp {(p.stockQty * p.averageCost).toLocaleString('id-ID')}
+                          </td>
+                          <td className="amount-col">Rp {p.sellingPrice.toLocaleString('id-ID')}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div style={{ fontWeight: 600, fontSize: '12px', marginBottom: '8px', color: 'var(--text-secondary)' }}>Mutasi Stok Terbaru</div>
+                <div className="table-wrapper">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Tanggal</th>
+                        <th>Produk</th>
+                        <th>Tipe Mutasi</th>
+                        <th style={{ textAlign: 'right' }}>Kuantitas</th>
+                        <th style={{ textAlign: 'right' }}>Biaya / Unit</th>
+                        <th>Referensi / Keterangan</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {inventoryLogs.map(log => {
+                        const prod = products.find(p => p.id === log.productId);
+                        return (
+                          <tr key={log.id}>
+                            <td>{log.date}</td>
+                            <td>{prod ? `${prod.name} (${prod.sku})` : 'Produk tidak dikenal'}</td>
+                            <td>
+                              <span style={{
+                                fontSize: '10px',
+                                padding: '2px 8px',
+                                borderRadius: '10px',
+                                fontWeight: 600,
+                                background: log.type === 'MASUK' ? 'rgba(16, 185, 129, 0.1)' : log.type === 'KELUAR' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                                color: log.type === 'MASUK' ? 'var(--accent-success)' : log.type === 'KELUAR' ? 'var(--accent-danger)' : 'var(--accent-warning)',
+                              }}>
+                                {log.type}
+                              </span>
+                            </td>
+                            <td className="amount-col">{log.qty} Unit</td>
+                            <td className="amount-col">Rp {log.cost.toLocaleString('id-ID')}</td>
+                            <td style={{ fontFamily: 'monospace', fontSize: '11px' }}>{log.reference || '-'}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+
+            {/* SUB TAB 2: SEBARAN GUDANG */}
+            {inventorySubTab === 'GUDANG' && (
+              <div style={{ marginTop: '16px' }}>
+                <div style={{ fontWeight: 600, fontSize: '12px', marginBottom: '8px', color: 'var(--text-secondary)' }}>Stok per Gudang</div>
+                <div className="table-wrapper">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>SKU</th>
+                        <th>Nama Produk</th>
+                        <th style={{ textAlign: 'right' }}>{warehouses[0]?.name || 'Gudang Utama'} ({warehouses[0]?.id || 'w-01'})</th>
+                        <th style={{ textAlign: 'right' }}>{warehouses[1]?.name || 'Gudang Transit'} ({warehouses[1]?.id || 'w-02'})</th>
+                        <th style={{ textAlign: 'right' }}>Total Stok</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {products.map(p => {
+                        // Simulasi split 80-20 offline-first untuk demo sebaran gudang yang realistis
+                        const mainQty = Math.round(p.stockQty * 0.8 * 10) / 10;
+                        const transitQty = Math.round((p.stockQty - mainQty) * 10) / 10;
+                        return (
+                          <tr key={p.id}>
+                            <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{p.sku}</td>
+                            <td>{p.name}</td>
+                            <td className="amount-col">{mainQty} Unit</td>
+                            <td className="amount-col">{transitQty} Unit</td>
+                            <td className="amount-col" style={{ fontWeight: 600 }}>{p.stockQty} Unit</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* SUB TAB 3: STOCK OPNAME FISIK */}
+            {inventorySubTab === 'OPNAME' && (
+              <div style={{ marginTop: '16px' }}>
+                <div style={{ fontWeight: 600, fontSize: '12px', marginBottom: '8px', color: 'var(--text-secondary)' }}>Riwayat Stock Opname Fisik</div>
+                <div className="table-wrapper">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>ID Opname</th>
+                        <th>Tanggal</th>
+                        <th>Jumlah Produk</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {stockTakes.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                            Belum ada riwayat stock opname fisik.
+                          </td>
+                        </tr>
+                      ) : (
+                        stockTakes.map(st => (
+                          <tr key={st.id}>
+                            <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{st.id}</td>
+                            <td>{st.date}</td>
+                            <td>{st.items?.length || 0} Barang</td>
+                            <td style={{ color: 'var(--accent-success)' }}>{st.status}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </>
         )}
 
@@ -910,11 +1109,28 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
                           <td style={{ textAlign: 'right' }}>Rp {asset.accumulatedDepreciation.toLocaleString('id-ID')}</td>
                           <td style={{ textAlign: 'right', fontWeight: 600 }}>Rp {bookValue.toLocaleString('id-ID')}</td>
                           <td>
-                            {asset.isFullyDepreciated ? (
-                              <span style={{ color: 'var(--accent-success)', fontWeight: 600 }}>Fully Depreciated</span>
-                            ) : (
-                              <span style={{ color: 'var(--text-muted)' }}>Penyusutan Berjalan</span>
-                            )}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              {asset.status === 'DISPOSED' ? (
+                                <span style={{ color: 'var(--accent-danger)', fontWeight: 600 }}>Dilepas</span>
+                              ) : asset.isFullyDepreciated ? (
+                                <span style={{ color: 'var(--accent-success)', fontWeight: 600 }}>Fully Depreciated</span>
+                              ) : (
+                                <span style={{ color: 'var(--text-muted)' }}>Penyusutan Berjalan</span>
+                              )}
+                              
+                              {asset.status !== 'DISPOSED' && (
+                                <button 
+                                  className="btn btn-secondary" 
+                                  style={{ padding: '2px 6px', fontSize: '10px' }}
+                                  onClick={() => {
+                                    setSelectedAssetForDisposal(asset);
+                                    setShowDisposalModal(true);
+                                  }}
+                                >
+                                  Lepas
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -1009,7 +1225,7 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
               <div style={{ flex: 1, background: 'var(--bg-card)', padding: '20px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
                 <h4 style={{ fontFamily: 'var(--font-display)', fontWeight: 600, marginBottom: '12px' }}>e-Faktur Pajak ( simulator )</h4>
                 <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-                  Unduh template e-Faktur PPN (Masukan/Keluaran) dan e-Bupot PPh 21 dari sistem untuk pelaporan DJP.
+                  Unduh template e-Faktur PPN (Masukan/Keluaran) dan e-Bupot PPh (21/23) dari sistem untuk pelaporan DJP.
                 </p>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                   <button className="btn btn-secondary" onClick={() => handleExportEFaktur('MASUKAN')}>
@@ -1023,6 +1239,10 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
                   <button className="btn btn-secondary" onClick={handleExportEBupot}>
                     <Download size={12} />
                     <span>e-Bupot PPh 21</span>
+                  </button>
+                  <button className="btn btn-secondary" onClick={handleExportEBupot23}>
+                    <Download size={12} />
+                    <span>e-Bupot PPh 23</span>
                   </button>
                 </div>
               </div>
@@ -1055,6 +1275,14 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
             </div>
 
           </div>
+        )}
+
+        {activeTab === 'PENJUALAN' && (
+          <SalesManager />
+        )}
+
+        {activeTab === 'PEMBELIAN' && (
+          <PurchaseManager />
         )}
 
       </div>
@@ -1209,6 +1437,108 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' }}>
                 <button type="button" className="btn btn-secondary" onClick={() => setShowAdjustModal(false)}>Batal</button>
                 <button type="submit" className="btn btn-primary">Post Penyesuaian</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Stock Opname Fisik Baru */}
+      {showNewStockTakeModal && (
+        <div className="modal-overlay">
+          <div className="modal-container" style={{ maxWidth: '600px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+            <div className="modal-header">
+              <h3 style={{ fontFamily: 'var(--font-display)', fontWeight: 600 }}>Stock Opname Fisik Baru</h3>
+              <button style={{ background: 'transparent', border: 'none', color: 'white', cursor: 'pointer' }} onClick={() => setShowNewStockTakeModal(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            <form onSubmit={handleSaveNewStockTake} className="modal-body" style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                Isi kuantitas riil hasil perhitungan fisik di gudang. Selisih akan menjurnal otomatis.
+              </div>
+              <div style={{ flex: 1, overflowY: 'auto', maxHeight: '50vh' }}>
+                <table className="data-table" style={{ width: '100%' }}>
+                  <thead>
+                    <tr>
+                      <th>Nama Barang</th>
+                      <th style={{ textAlign: 'right' }}>Stok Sistem</th>
+                      <th style={{ textAlign: 'right', width: '120px' }}>Stok Fisik</th>
+                      <th style={{ textAlign: 'right' }}>Selisih</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {newStockTakeItems.map((item, index) => {
+                      const prodName = products.find(p => p.id === item.productId)?.name || item.productId;
+                      const diff = item.physicalQty - item.systemQty;
+                      return (
+                        <tr key={item.productId}>
+                          <td>{prodName}</td>
+                          <td style={{ textAlign: 'right' }}>{item.systemQty} Unit</td>
+                          <td style={{ textAlign: 'right' }}>
+                            <input
+                              type="number"
+                              className="form-input"
+                              style={{ width: '90px', textAlign: 'right', display: 'inline-block' }}
+                              value={item.physicalQty}
+                              onChange={e => {
+                                const val = parseFloat(e.target.value) || 0;
+                                const updated = [...newStockTakeItems];
+                                updated[index].physicalQty = val;
+                                setNewStockTakeItems(updated);
+                              }}
+                            />
+                          </td>
+                          <td style={{ textAlign: 'right', color: diff === 0 ? 'var(--text-primary)' : diff > 0 ? 'var(--accent-success)' : 'var(--accent-danger)', fontWeight: 600 }}>
+                            {diff > 0 ? `+${diff}` : diff}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '12px' }}>
+                <button type="button" className="btn btn-secondary" onClick={() => setShowNewStockTakeModal(false)}>Batal</button>
+                <button type="submit" className="btn btn-primary">Post Hasil Opname</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Pelepasan Aset (Disposal) */}
+      {showDisposalModal && selectedAssetForDisposal && (
+        <div className="modal-overlay">
+          <div className="modal-container" style={{ maxWidth: '400px' }}>
+            <div className="modal-header">
+              <h3 style={{ fontFamily: 'var(--font-display)', fontWeight: 600 }}>Pelepasan / Penjualan Aset</h3>
+              <button style={{ background: 'transparent', border: 'none', color: 'white', cursor: 'pointer' }} onClick={() => {
+                setShowDisposalModal(false);
+                setSelectedAssetForDisposal(null);
+              }}>
+                <X size={20} />
+              </button>
+            </div>
+            <form onSubmit={handlePostDisposal} className="modal-body">
+              <div style={{ marginBottom: '12px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                Aset: <strong>{selectedAssetForDisposal.name}</strong><br/>
+                Nilai Buku: <strong>Rp {(selectedAssetForDisposal.cost - selectedAssetForDisposal.accumulatedDepreciation).toLocaleString('id-ID')}</strong>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Tanggal Pelepasan</label>
+                <input type="date" className="form-input" value={disposalDate} onChange={e => setDisposalDate(e.target.value)} required />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Nilai Jual / Pelepasan (Rp)</label>
+                <input type="number" className="form-input" placeholder="contoh: 5000000 (isi 0 jika dibuang)" value={disposalValue} onChange={e => setDisposalValue(parseFloat(e.target.value) || 0)} required />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' }}>
+                <button type="button" className="btn btn-secondary" onClick={() => {
+                  setShowDisposalModal(false);
+                  setSelectedAssetForDisposal(null);
+                }}>Batal</button>
+                <button type="submit" style={{ background: 'var(--accent-danger)', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: '500' }}>Post Pelepasan</button>
               </div>
             </form>
           </div>

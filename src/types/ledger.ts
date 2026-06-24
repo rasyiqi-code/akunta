@@ -117,3 +117,77 @@ export interface CashFlowReport {
   endBalance: number;
 }
 
+export interface SalesDocumentItem {
+  id?: number;
+  documentId: string;
+  productId: string;
+  qty: number;
+  price: number;
+  discount: number;
+}
+
+export interface SalesDocument {
+  id: string;
+  date: string;
+  contactId: string;
+  type: 'QUOTATION' | 'ORDER' | 'DELIVERY' | 'INVOICE' | 'RETURN';
+  status: 'PENDING' | 'COMPLETED' | 'CANCELLED';
+  referenceId?: string;
+  totalAmount: number;
+  dpApplied: number;
+  items?: SalesDocumentItem[];
+}
+
+export interface PurchaseDocumentItem {
+  id?: number;
+  documentId: string;
+  productId: string;
+  qty: number;
+  price: number;
+  discount: number;
+}
+
+export interface PurchaseDocument {
+  id: string;
+  date: string;
+  contactId: string;
+  type: 'ORDER' | 'RECEIPT' | 'INVOICE' | 'RETURN';
+  status: 'PENDING' | 'COMPLETED' | 'CANCELLED';
+  referenceId?: string;
+  totalAmount: number;
+  dpApplied: number;
+  items?: PurchaseDocumentItem[];
+}
+
+export interface Warehouse {
+  id: string;
+  name: string;
+}
+
+export interface StockTakeItem {
+  id?: number;
+  stockTakeId: string;
+  productId: string;
+  systemQty: number;
+  physicalQty: number;
+  diffQty: number;
+  cost: number;
+}
+
+export interface StockTakeOrder {
+  id: string;
+  date: string;
+  status: 'DRAFT' | 'COMPLETED';
+  items?: StockTakeItem[];
+}
+
+export interface FixedAssetAdjustment {
+  id: string;
+  assetId: string;
+  date: string;
+  type: 'REVALUATION' | 'IMPAIRMENT';
+  amount: number;
+  description: string;
+}
+
+

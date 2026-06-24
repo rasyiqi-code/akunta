@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   Sparkles, BookOpen, List, FileText, Layers, 
-  Settings, ChevronRight, Sidebar
+  Settings, ChevronRight, Sidebar, ShoppingCart, ShoppingBag
 } from 'lucide-react';
 import { initializeDatabase } from './utils/db';
 import { WarRoom } from './components/AssistantMode/WarRoom';
@@ -10,7 +10,7 @@ import { LedgerDashboard } from './components/AccountantMode/LedgerDashboard';
 import { TitleBar } from './components/TitleBar';
 import { CommandMenu } from './components/CommandMenu';
 
-type ModuleTab = 'JURNAL' | 'BUKUBESAR' | 'PERSEDIAAN' | 'ASETTETAP' | 'LABARUGI' | 'NERACA' | 'PAJAK' | 'NERACASALDO' | 'ARUSKAS';
+type ModuleTab = 'JURNAL' | 'BUKUBESAR' | 'PERSEDIAAN' | 'ASETTETAP' | 'LABARUGI' | 'NERACA' | 'PAJAK' | 'NERACASALDO' | 'ARUSKAS' | 'PENJUALAN' | 'PEMBELIAN';
 
 function App() {
   const [activeTab, setActiveTab] = useState<ModuleTab>('JURNAL');
@@ -36,6 +36,8 @@ function App() {
     switch(tab) {
       case 'JURNAL': return 'Jurnal Umum';
       case 'BUKUBESAR': return 'Daftar Akun (COA)';
+      case 'PENJUALAN': return 'Modul Penjualan';
+      case 'PEMBELIAN': return 'Modul Pembelian';
       case 'PERSEDIAAN': return 'Persediaan';
       case 'ASETTETAP': return 'Aset Tetap';
       case 'LABARUGI': return 'Laporan Laba Rugi';
@@ -108,6 +110,22 @@ function App() {
               <Sidebar size={13} style={{ display: 'none' }} /> {/* dummy to avoid error if any icon needed */}
               <List size={13} />
               <span>Daftar Akun (COA)</span>
+            </div>
+
+            <div 
+              className={`sidebar-item ${activeTab === 'PENJUALAN' ? 'active' : ''}`}
+              onClick={() => setActiveTab('PENJUALAN')}
+            >
+              <ShoppingCart size={13} />
+              <span>Penjualan</span>
+            </div>
+
+            <div 
+              className={`sidebar-item ${activeTab === 'PEMBELIAN' ? 'active' : ''}`}
+              onClick={() => setActiveTab('PEMBELIAN')}
+            >
+              <ShoppingBag size={13} />
+              <span>Pembelian</span>
             </div>
 
             <div 

@@ -111,12 +111,98 @@ fn migrate_schema(conn: &Connection) -> std::result::Result<(), String> {
             card_data TEXT, -- JSON string metadata tambahan
             image_url TEXT -- base64 image jika ada
         );"#,
+        // 10. Warehouses
+        r#"CREATE TABLE IF NOT EXISTS warehouses (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL
+        );"#,
+        // 11. Sales Documents
+        r#"CREATE TABLE IF NOT EXISTS sales_documents (
+            id TEXT PRIMARY KEY,
+            date TEXT NOT NULL,
+            contact_id TEXT NOT NULL,
+            type TEXT NOT NULL, -- 'QUOTATION' | 'ORDER' | 'DELIVERY' | 'INVOICE' | 'RETURN'
+            status TEXT NOT NULL, -- 'PENDING' | 'COMPLETED' | 'CANCELLED'
+            reference_id TEXT,
+            total_amount REAL NOT NULL,
+            dp_applied REAL DEFAULT 0.0,
+            FOREIGN KEY (contact_id) REFERENCES contacts(id)
+        );"#,
+        // 12. Sales Document Items
+        r#"CREATE TABLE IF NOT EXISTS sales_document_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            document_id TEXT NOT NULL,
+            product_id TEXT NOT NULL,
+            qty REAL NOT NULL,
+            price REAL NOT NULL,
+            discount REAL DEFAULT 0.0,
+            FOREIGN KEY (document_id) REFERENCES sales_documents(id) ON DELETE CASCADE,
+            FOREIGN KEY (product_id) REFERENCES products(id)
+        );"#,
+        // 13. Purchase Documents
+        r#"CREATE TABLE IF NOT EXISTS purchase_documents (
+            id TEXT PRIMARY KEY,
+            date TEXT NOT NULL,
+            contact_id TEXT NOT NULL,
+            type TEXT NOT NULL, -- 'ORDER' | 'RECEIPT' | 'INVOICE' | 'RETURN'
+            status TEXT NOT NULL, -- 'PENDING' | 'COMPLETED' | 'CANCELLED'
+            reference_id TEXT,
+            total_amount REAL NOT NULL,
+            dp_applied REAL DEFAULT 0.0,
+            FOREIGN KEY (contact_id) REFERENCES contacts(id)
+        );"#,
+        // 14. Purchase Document Items
+        r#"CREATE TABLE IF NOT EXISTS purchase_document_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            document_id TEXT NOT NULL,
+            product_id TEXT NOT NULL,
+            qty REAL NOT NULL,
+            price REAL NOT NULL,
+            discount REAL DEFAULT 0.0,
+            FOREIGN KEY (document_id) REFERENCES purchase_documents(id) ON DELETE CASCADE,
+            FOREIGN KEY (product_id) REFERENCES products(id)
+        );"#,
+        // 15. Stock Take Orders
+        r#"CREATE TABLE IF NOT EXISTS stock_take_orders (
+            id TEXT PRIMARY KEY,
+            date TEXT NOT NULL,
+            status TEXT NOT NULL -- 'DRAFT' | 'COMPLETED'
+        );"#,
+        // 16. Stock Take Items
+        r#"CREATE TABLE IF NOT EXISTS stock_take_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            stock_take_id TEXT NOT NULL,
+            product_id TEXT NOT NULL,
+            system_qty REAL NOT NULL,
+            physical_qty REAL NOT NULL,
+            diff_qty REAL NOT NULL,
+            cost REAL NOT NULL,
+            FOREIGN KEY (stock_take_id) REFERENCES stock_take_orders(id) ON DELETE CASCADE,
+            FOREIGN KEY (product_id) REFERENCES products(id)
+        );"#,
+        // 17. Fixed Asset Adjustments
+        r#"CREATE TABLE IF NOT EXISTS fixed_asset_adjustments (
+            id TEXT PRIMARY KEY,
+            asset_id TEXT NOT NULL,
+            date TEXT NOT NULL,
+            type TEXT NOT NULL, -- 'REVALUATION' | 'IMPAIRMENT'
+            amount REAL NOT NULL,
+            description TEXT NOT NULL,
+            FOREIGN KEY (asset_id) REFERENCES fixed_assets(id) ON DELETE CASCADE
+        );"#,
     ];
 
     for q in queries {
         conn.execute(q, [])
             .map_err(|e| format!("Gagal membuat tabel dengan query: {}\nError: {}", q, e))?;
     }
+
+    // Tambah kolom baru via ALTER TABLE secara aman
+    let _ = conn.execute("ALTER TABLE fixed_assets ADD COLUMN status TEXT DEFAULT 'ACTIVE';", []);
+    let _ = conn.execute("ALTER TABLE fixed_assets ADD COLUMN disposal_date TEXT;", []);
+    let _ = conn.execute("ALTER TABLE fixed_assets ADD COLUMN disposal_value REAL DEFAULT 0.0;", []);
+    let _ = conn.execute("ALTER TABLE fixed_assets ADD COLUMN disposal_gain_loss REAL DEFAULT 0.0;", []);
+    let _ = conn.execute("ALTER TABLE inventory_logs ADD COLUMN warehouse_id TEXT DEFAULT 'w-01';", []);
 
     Ok(())
 }
@@ -332,5 +418,22 @@ fn seed_default_data(conn: &Connection) -> std::result::Result<(), String> {
         ).map_err(|e| format!("Gagal memasukkan pesan selamat datang: {}", e))?;
     }
 
+    // 8. Cek & Seed Warehouses
+    let count_warehouses: i64 = conn
+        .query_row("SELECT COUNT(*) FROM warehouses", [], |r| r.get(0))
+        .map_err(|e| format!("Gagal membaca count warehouses: {}", e))?;
+
+    if count_warehouses == 0 {
+        conn.execute(
+            "INSERT INTO warehouses (id, name) VALUES ('w-01', 'Gudang Utama')",
+            [],
+        ).map_err(|e| format!("Gagal memasukkan gudang utama default: {}", e))?;
+        conn.execute(
+            "INSERT INTO warehouses (id, name) VALUES ('w-02', 'Gudang Transit')",
+            [],
+        ).map_err(|e| format!("Gagal memasukkan gudang transit default: {}", e))?;
+    }
+
     Ok(())
 }
+
