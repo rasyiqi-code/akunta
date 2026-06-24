@@ -1,7 +1,6 @@
 use rusqlite::{params, Connection};
 use crate::{
-    SalesDocument, SalesDocumentItem, PurchaseDocument, PurchaseDocumentItem,
-    Warehouse, StockTakeOrder, StockTakeItem, FixedAssetAdjustment
+    SalesDocument, PurchaseDocument, Warehouse, StockTakeOrder, FixedAssetAdjustment
 };
 
 // Ambil semua dokumen penjualan beserta itemnya
