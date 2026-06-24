@@ -225,8 +225,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onReportRequested 
                       className={`jurnal-line-row ${line.credit > 0 ? 'credit' : 'debit'}`}
                     >
                       <span style={{ color: line.credit > 0 ? 'var(--text-secondary)' : 'var(--text-primary)' }}>
-                        {line.accountCode} - {line.credit > 0 ? '   ' : ''}
-                        {DEFAULT_ACCOUNTS.find((a: any) => a.code === line.accountCode)?.name || 'Akun'}
+                        {line.accountCode} - {DEFAULT_ACCOUNTS.find((a: any) => a.code === line.accountCode)?.name || 'Akun'}
                       </span>
                       <span className="amount-col" style={{ color: line.credit > 0 ? 'var(--accent-warning)' : 'var(--accent-success)' }}>
                         {line.debit > 0 
@@ -311,13 +310,12 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onReportRequested 
           />
           <button 
             type="button" 
-            className="btn btn-secondary btn-circle" 
-            style={{ marginRight: '6px', background: 'transparent', border: 'none' }}
+            className="chat-action-btn"
             disabled={isLoading || ocrProcessing}
             onClick={handleUploadImageClick}
             title="Lensa AI - Unggah Nota"
           >
-            <Camera size={18} style={{ color: 'var(--text-secondary)' }} />
+            <Camera size={14} />
           </button>
           <button type="submit" className="btn btn-primary btn-circle" disabled={isLoading || ocrProcessing || !inputValue.trim()}>
             <Send size={16} />

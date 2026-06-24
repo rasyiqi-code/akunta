@@ -175,13 +175,13 @@ function App() {
             
             <div className="command-actions">
               <button 
-                className={`btn ${showPreviewPane ? 'btn-primary' : 'btn-secondary'}`}
+                className="btn btn-secondary"
                 style={{ padding: '3px 8px' }}
                 onClick={() => setShowPreviewPane(!showPreviewPane)}
                 title="Toggle Asisten AI (Preview Pane)"
               >
-                <Sidebar size={12} />
-                <span>{showPreviewPane ? 'Sembunyikan AI' : 'Tampilkan AI'}</span>
+                <Sidebar size={12} style={{ color: showPreviewPane ? 'var(--accent-primary)' : 'var(--text-secondary)' }} />
+                <span>Asisten AI</span>
               </button>
             </div>
           </div>
