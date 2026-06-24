@@ -32,6 +32,7 @@ struct FixedAsset {
     is_fully_depreciated: Option<bool>,
 }
 
+#[allow(dead_code)]
 #[derive(Serialize, Deserialize, Clone)]
 struct SalesDocumentItem {
     id: Option<i64>,
@@ -44,6 +45,7 @@ struct SalesDocumentItem {
     discount: f64,
 }
 
+#[allow(dead_code)]
 #[derive(Serialize, Deserialize, Clone)]
 struct SalesDocument {
     id: String,
@@ -62,6 +64,7 @@ struct SalesDocument {
     items: Option<Vec<SalesDocumentItem>>,
 }
 
+#[allow(dead_code)]
 #[derive(Serialize, Deserialize, Clone)]
 struct PurchaseDocumentItem {
     id: Option<i64>,
@@ -74,6 +77,7 @@ struct PurchaseDocumentItem {
     discount: f64,
 }
 
+#[allow(dead_code)]
 #[derive(Serialize, Deserialize, Clone)]
 struct PurchaseDocument {
     id: String,
@@ -92,12 +96,14 @@ struct PurchaseDocument {
     items: Option<Vec<PurchaseDocumentItem>>,
 }
 
+#[allow(dead_code)]
 #[derive(Serialize, Deserialize, Clone)]
 struct Warehouse {
     id: String,
     name: String,
 }
 
+#[allow(dead_code)]
 #[derive(Serialize, Deserialize, Clone)]
 struct StockTakeItem {
     id: Option<i64>,
@@ -114,6 +120,7 @@ struct StockTakeItem {
     cost: f64,
 }
 
+#[allow(dead_code)]
 #[derive(Serialize, Deserialize, Clone)]
 struct StockTakeOrder {
     id: String,
@@ -122,6 +129,7 @@ struct StockTakeOrder {
     items: Option<Vec<StockTakeItem>>,
 }
 
+#[allow(dead_code)]
 #[derive(Serialize, Deserialize, Clone)]
 struct FixedAssetAdjustment {
     id: String,
@@ -133,6 +141,7 @@ struct FixedAssetAdjustment {
     amount: f64,
     description: String,
 }
+
 
 #[derive(Serialize, Deserialize, Clone)]
 struct JournalLine {
