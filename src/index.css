@@ -43,6 +43,25 @@
   --bg-input: #12131a;
   --border-input: rgba(255, 255, 255, 0.08);
   --text-input: #ffffff;
+
+  /* Variabel Tabel Adaptif */
+  --bg-table: rgba(15, 16, 22, 0.6);
+  --bg-table-head: rgba(255, 255, 255, 0.03);
+  --border-table: rgba(255, 255, 255, 0.06);
+  --border-table-row: rgba(255, 255, 255, 0.02);
+  --text-table-head: #9ca3af;
+  --text-table-muted: #a1a1aa;
+  --text-table-dim: #e4e4e7;
+  --text-table-primary: #ffffff;
+  --bg-row-hover: rgba(255, 255, 255, 0.05);
+  --bg-tab-active: rgba(255, 255, 255, 0.08);
+  --bg-tab-track: rgba(255, 255, 255, 0.06);
+  --bg-add-row: rgba(255, 255, 255, 0.02);
+  --border-add-row: rgba(255, 255, 255, 0.12);
+  --bg-section-row: rgba(255, 255, 255, 0.02);
+  --bg-highlight-row: rgba(255, 255, 255, 0.03);
+  --bg-progress-track: rgba(255, 255, 255, 0.08);
+  --color-dp-amount: #f87171;
 }
 
 /* GNOME Adwaita Light Theme */
@@ -80,6 +99,25 @@
   --bg-input: #ffffff;
   --border-input: #dcdcdc;
   --text-input: #2e2e2e;
+
+  /* Variabel Tabel Adaptif - Light Theme */
+  --bg-table: rgba(255, 255, 255, 0.8);
+  --bg-table-head: rgba(0, 0, 0, 0.03);
+  --border-table: rgba(0, 0, 0, 0.08);
+  --border-table-row: rgba(0, 0, 0, 0.04);
+  --text-table-head: #6b7280;
+  --text-table-muted: #6b7280;
+  --text-table-dim: #374151;
+  --text-table-primary: #1f2937;
+  --bg-row-hover: rgba(0, 0, 0, 0.04);
+  --bg-tab-active: rgba(0, 0, 0, 0.06);
+  --bg-tab-track: rgba(0, 0, 0, 0.06);
+  --bg-add-row: rgba(0, 0, 0, 0.02);
+  --border-add-row: rgba(0, 0, 0, 0.12);
+  --bg-section-row: rgba(0, 0, 0, 0.02);
+  --bg-highlight-row: rgba(0, 0, 0, 0.03);
+  --bg-progress-track: rgba(0, 0, 0, 0.08);
+  --color-dp-amount: #dc2626;
 }
 
 * {
@@ -955,6 +993,11 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .focus-glow {
   transition: all 0.2s ease-in-out;
 }
+.light-theme .focus-glow:focus {
+  background: rgba(255, 255, 255, 0.9) !important;
+  border-color: var(--accent-primary) !important;
+  box-shadow: 0 0 0 2px rgba(53, 132, 228, 0.25), 0 0 10px rgba(53, 132, 228, 0.3) !important;
+}
 .focus-glow:focus {
   border-color: var(--accent-primary) !important;
   box-shadow: 0 0 0 2px rgba(53, 132, 228, 0.25), 0 0 10px rgba(53, 132, 228, 0.3) !important;
@@ -1055,6 +1098,187 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   backdrop-filter: blur(12px) saturate(180%);
   -webkit-backdrop-filter: blur(12px) saturate(180%);
   background-color: rgba(10, 11, 15, 0.75) !important;
+}
+
+/* --- Class Tabel Adaptif --- */
+.data-table-wrapper {
+  background: var(--bg-table);
+  border-radius: 8px;
+  border: 1px solid var(--border-table);
+  overflow: hidden;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.data-table thead tr {
+  background: var(--bg-table-head);
+  text-align: left;
+  border-bottom: 1px solid var(--border-table);
+}
+
+.data-table thead th {
+  padding: 12px 16px;
+  color: var(--text-table-head);
+  font-weight: 600;
+}
+
+.data-table tbody tr {
+  border-bottom: 1px solid var(--border-table-row);
+  transition: background 0.15s ease;
+}
+
+.data-table tbody tr:hover {
+  background: var(--bg-row-hover) !important;
+}
+
+.data-table tbody td {
+  padding: 12px 16px;
+  color: var(--text-table-dim);
+}
+
+.data-table tbody td.td-muted {
+  color: var(--text-table-muted);
+}
+
+.data-table tbody td.td-primary {
+  font-weight: 600;
+  color: var(--text-table-primary);
+}
+
+.data-table tbody td.td-mono {
+  font-family: monospace;
+  font-weight: 700;
+  color: var(--text-table-primary);
+}
+
+.data-table tbody td.td-empty {
+  padding: 32px;
+  text-align: center;
+  color: var(--text-table-muted);
+  font-style: italic;
+}
+
+/* Modal divider adaptif */
+.modal-divider {
+  border-bottom: 1px solid var(--border-modal);
+}
+
+.modal-footer-divider {
+  border-top: 1px solid var(--border-modal);
+}
+
+/* Tombol tambah baris adaptif */
+.add-row-btn {
+  background: var(--bg-add-row);
+  border: 1px dashed var(--border-add-row);
+  padding: 8px;
+  width: 100%;
+  border-radius: 6px;
+  color: var(--text-table-muted);
+  font-size: 11px;
+  cursor: pointer;
+  margin-top: 8px;
+  transition: all 0.2s ease;
+}
+
+.add-row-btn:hover {
+  background: var(--bg-tab-active);
+  border-color: var(--border-color);
+}
+
+/* Daftar item di form modal */
+.item-list-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.item-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Badge tipe akun di tabel (LedgerDashboard) */
+.account-type-badge {
+  font-size: 11px;
+  background: var(--bg-tab-active);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+/* Label form di modal */
+.modal-label {
+  display: block;
+  font-size: 11px;
+  color: var(--text-table-muted);
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+
+/* Tombol close modal */
+.btn-modal-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  transition: color 0.15s ease;
+}
+
+.btn-modal-close:hover {
+  color: var(--text-primary);
+}
+
+/* Tombol cancel di modal */
+.btn-cancel {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 6px 12px;
+  font-weight: 500;
+  transition: color 0.15s ease;
+}
+
+.btn-cancel:hover {
+  color: var(--text-primary);
+}
+
+/* Section row summary */
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--bg-section-row);
+  border-radius: 4px;
+}
+
+/* Tab sub-navigasi adaptif */
+.sub-tab-item {
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  transition: all 0.15s ease;
+}
+
+.sub-tab-item.active {
+  background: var(--bg-tab-active);
+  color: var(--text-primary);
 }
 
 /* --- OVERRIDES UNTUK TEMA TERANG (LIGHT THEME) --- */
