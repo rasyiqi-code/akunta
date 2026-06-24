@@ -9,13 +9,138 @@ export const WarRoom: React.FC = () => {
   const [cashOutToday, setCashOutToday] = useState(0);
   const [totalBankBalance, setTotalBankBalance] = useState(0);
   const [netProfit, setNetProfit] = useState(0);
+  
+  // State untuk melacak data produk kritis dan alert piutang
+  const [criticalProducts, setCriticalProducts] = useState<any[]>([]);
+  const [receivablesAlerts, setReceivablesAlerts] = useState<{ type: 'RED' | 'YELLOW'; text: string; id: string }[]>([]);
 
   // Reaktif terhadap perubahan database jurnal via React State
   const [journals, setJournals] = useState<any[]>([]);
 
+  // Fungsi untuk mendapatkan sapaan dinamis berdasarkan jam sistem lokal
+  const getGreeting = () => {
+    const hours = new Date().getHours();
+    if (hours >= 4 && hours < 11) return 'Selamat pagi';
+    if (hours >= 11 && hours < 15) return 'Selamat siang';
+    if (hours >= 15 && hours < 18) return 'Selamat sore';
+    return 'Selamat malam';
+  };
+
+  // Fungsi memeriksa stok produk kritis (< 5 unit)
+  const fetchProductsAndCheckStock = async () => {
+    try {
+      const productList = await db.products.toArray();
+      const critical = productList.filter(p => p.stockQty < 5);
+      setCriticalProducts(critical);
+    } catch (err) {
+      console.error('Gagal mengambil data produk untuk War Room:', err);
+    }
+  };
+
+  // Fungsi menganalisis piutang usaha (akun 1104) secara FIFO aging
+  const analyzeReceivables = (journalList: any[]) => {
+    // Dapatkan semua baris jurnal untuk akun 1104 (Piutang Usaha)
+    // Urutkan jurnal dari tanggal terlama ke terbaru (FIFO)
+    const sortedJournals = [...journalList].sort(
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+    );
+    
+    interface Receivable {
+      id: string;
+      date: string;
+      description: string;
+      debit: number;
+      remaining: number;
+    }
+    
+    const debitEntries: Receivable[] = [];
+    let totalCredit = 0;
+
+    for (const j of sortedJournals) {
+      if (!j.lines) continue;
+      for (const line of j.lines) {
+        if (line.accountCode === '1104') {
+          if (line.debit > 0) {
+            debitEntries.push({
+              id: j.id,
+              date: j.date,
+              description: j.description,
+              debit: line.debit,
+              remaining: line.debit
+            });
+          }
+          if (line.credit > 0) {
+            totalCredit += line.credit;
+          }
+        }
+      }
+    }
+
+    // Alokasikan total pelunasan piutang secara FIFO
+    let tempCredit = totalCredit;
+    for (const entry of debitEntries) {
+      if (tempCredit <= 0) break;
+      if (tempCredit >= entry.remaining) {
+        tempCredit -= entry.remaining;
+        entry.remaining = 0;
+      } else {
+        entry.remaining -= tempCredit;
+        tempCredit = 0;
+      }
+    }
+
+    // Filter piutang aktif yang masih memiliki sisa saldo (remaining > 0)
+    const activeReceivables = debitEntries.filter(e => e.remaining > 0);
+    
+    // Hitung aging jatuh tempo (Termin Net 30 hari)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Reset jam untuk kalkulasi hari bersih
+    const alertsList: { type: 'RED' | 'YELLOW'; text: string; id: string }[] = [];
+
+    activeReceivables.forEach((rec, idx) => {
+      const txDate = new Date(rec.date);
+      const dueDate = new Date(txDate);
+      dueDate.setDate(dueDate.getDate() + 30); // Tambah 30 hari jatuh tempo
+      
+      const diffTime = today.getTime() - dueDate.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); // positif jika terlewat
+
+      if (diffDays > 7) {
+        alertsList.push({
+          id: `rec-critical-${rec.id}-${idx}`,
+          type: 'RED',
+          text: `🚨 **Piutang Kritis:** Tagihan dari **"${rec.description}"** sebesar Rp ${rec.remaining.toLocaleString('id-ID')} telah menunggak ${diffDays} hari melewati jatuh tempo.`
+        });
+      } else if (diffDays >= 0 && diffDays <= 7) {
+        alertsList.push({
+          id: `rec-due-${rec.id}-${idx}`,
+          type: 'YELLOW',
+          text: `⚠️ **Piutang Jatuh Tempo:** Tagihan **"${rec.description}"** sebesar Rp ${rec.remaining.toLocaleString('id-ID')} telah lewat jatuh tempo ${diffDays === 0 ? 'hari ini' : `${diffDays} hari`}.`
+        });
+      } else {
+        const daysToDue = Math.abs(diffDays);
+        if (daysToDue <= 3) {
+          alertsList.push({
+            id: `rec-warning-${rec.id}-${idx}`,
+            type: 'YELLOW',
+            text: `⏳ **Piutang Dekat Tempo:** Tagihan **"${rec.description}"** sebesar Rp ${rec.remaining.toLocaleString('id-ID')} akan jatuh tempo dalam ${daysToDue} hari.`
+          });
+        }
+      }
+    });
+
+    setReceivablesAlerts(alertsList);
+  };
+
   const fetchJournals = async () => {
-    const list = await db.journals.toArray();
-    setJournals(list);
+    try {
+      const list = await db.journals.toArray();
+      setJournals(list);
+      analyzeReceivables(list);
+      await fetchProductsAndCheckStock();
+    } catch (err) {
+      console.error('Gagal memuat jurnal untuk War Room:', err);
+    }
   };
 
   useEffect(() => {
@@ -44,7 +169,7 @@ export const WarRoom: React.FC = () => {
       const todayStr = new Date().toISOString().split('T')[0];
       const balances = await getAccountBalances();
 
-      // Saldo Bank Gabungan (BCA 1102 + Mandiri 1103 + Kas Utama 1101)
+      // Saldo Bank Gabungan (Kas Utama 1101 + BCA 1102 + Mandiri 1103)
       const cashVal = (balances['1101'] || 0) + (balances['1102'] || 0) + (balances['1103'] || 0);
       setTotalBankBalance(cashVal);
 
@@ -55,7 +180,6 @@ export const WarRoom: React.FC = () => {
       const journalsToday = journals.filter(j => j.date === todayStr);
       for (const j of journalsToday) {
         for (const line of j.lines) {
-          // Kas/Bank berkode 1101, 1102, 1103
           if (['1101', '1102', '1103'].includes(line.accountCode)) {
             if (line.debit > 0) inToday += line.debit;
             if (line.credit > 0) outToday += line.credit;
@@ -70,14 +194,31 @@ export const WarRoom: React.FC = () => {
       setNetProfit(pl.netProfit);
     };
 
-    if (journals.length > 0) {
-      calculateDashboardStats();
-    }
+    calculateDashboardStats();
   }, [journals]);
 
   // Evaluasi notifikasi berdasarkan data real-time
   const alerts: { type: 'RED' | 'YELLOW' | 'BLUE'; text: string; id: string }[] = [];
 
+  // 1. Masukkan alert piutang dari analisis FIFO
+  receivablesAlerts.forEach(a => {
+    alerts.push({
+      id: a.id,
+      type: a.type === 'RED' ? 'RED' : 'YELLOW',
+      text: a.text
+    });
+  });
+
+  // 2. Masukkan alert produk dengan stok kritis
+  criticalProducts.forEach(p => {
+    alerts.push({
+      id: `prod-crit-${p.id}`,
+      type: 'YELLOW',
+      text: `⚠️ **Stok Kritis:** Produk **"${p.name}"** hanya tersisa **${p.stockQty} unit** (di bawah reorder point 5 unit).`
+    });
+  });
+
+  // 3. Alert saldo bank di bawah batas aman operasional
   if (totalBankBalance < 5000000) {
     alerts.push({
       id: 'alt-bank',
@@ -86,7 +227,7 @@ export const WarRoom: React.FC = () => {
     });
   }
 
-  // Cari anomali dari jurnal
+  // 4. Cari anomali dari jurnal untuk peringatan audit
   const anomalies = journals.filter(j => j.isAnomaly);
   if (anomalies.length > 0) {
     alerts.push({
@@ -96,7 +237,7 @@ export const WarRoom: React.FC = () => {
     });
   }
 
-  // Notifikasi default / Tips keuangan
+  // 5. Tips Keuangan / Info default (hanya muncul jika tidak ada alert kritis)
   if (netProfit < 0) {
     alerts.push({
       id: 'alt-loss',
@@ -110,11 +251,13 @@ export const WarRoom: React.FC = () => {
       text: `🎉 **Performa Luar Biasa:** Laba bersih usaha bulan ini menembus Rp ${netProfit.toLocaleString('id-ID')}. Sangat baik untuk investasi penambahan inventaris.`
     });
   } else {
-    alerts.push({
-      id: 'alt-info',
-      type: 'BLUE',
-      text: `💡 **Tips Keuangan:** Rutin catat pengeluaran kecil agar Laba Rugi akhir bulan mencerminkan profitabilitas usaha yang akurat.`
-    });
+    if (alerts.length === 0) {
+      alerts.push({
+        id: 'alt-info',
+        type: 'BLUE',
+        text: `💡 **Tips Keuangan:** Rutin catat pengeluaran kecil agar Laba Rugi akhir bulan mencerminkan profitabilitas usaha yang akurat.`
+      });
+    }
   }
 
   return (
@@ -123,7 +266,7 @@ export const WarRoom: React.FC = () => {
       {/* Sapaan Personal */}
       <div>
         <h3 style={{ fontSize: '13px', fontWeight: 600, marginBottom: '2px', color: 'var(--text-primary)' }}>
-          War Room Akunta
+          {getGreeting()}, Pak Budi!
         </h3>
         <p style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>
           Ringkasan kesehatan finansial usaha Anda per hari ini.
@@ -209,7 +352,7 @@ export const WarRoom: React.FC = () => {
           💡 Pintasan Input Percakapan
         </h5>
         <ul style={{ fontSize: '10px', color: 'var(--text-secondary)', paddingLeft: '12px', lineHeight: '1.4' }}>
-          <li>"Jual kopi 50rb tunai"</li>
+          <li>"Jual kopi susu 50rb tunai"</li>
           <li>"Beli bahan kopi 1.2jt ngutang"</li>
           <li>"Bayar gaji karyawan 4jt pake BCA"</li>
         </ul>
@@ -218,3 +361,4 @@ export const WarRoom: React.FC = () => {
     </div>
   );
 };
+
