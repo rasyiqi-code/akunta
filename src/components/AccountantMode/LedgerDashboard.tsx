@@ -5,16 +5,19 @@ import {
   AlertTriangle, Upload, Download, Plus, FileText, X, Settings
 } from 'lucide-react';
 import { db, DEFAULT_ACCOUNTS } from '../../utils/db';
+import { invoke } from '@tauri-apps/api/core';
 import { 
   generateProfitLoss, generateBalanceSheet, postJournalEntry, 
   exportToBackupString, importFromBackupString 
 } from '../../utils/ledgerEngine';
 import { adjustProductStock } from '../../utils/inventoryEngine';
+import { runMonthlyDepreciation, addFixedAsset, calculateMonthlyDepreciation } from '../../utils/fixedAssetEngine';
+import { getTaxSummary, generateEFakturCSV, generateEBupotCSV, type TaxTransaction } from '../../utils/pajakEngine';
 import { getNarrativeAnalysis } from '../../utils/gemini';
 import * as XLSX from 'xlsx';
 
 interface LedgerDashboardProps {
-  activeTab: 'JURNAL' | 'BUKUBESAR' | 'LABARUGI' | 'NERACA' | 'PAJAK' | 'PERSEDIAAN';
+  activeTab: 'JURNAL' | 'BUKUBESAR' | 'PERSEDIAAN' | 'ASETTETAP' | 'LABARUGI' | 'NERACA' | 'PAJAK';
 }
 
 export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) => {
@@ -24,10 +27,21 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
   const bankStatements = useLiveQuery(() => db.bankStatements.toArray()) || [];
   const products = useLiveQuery(() => db.products.toArray()) || [];
   const inventoryLogs = useLiveQuery(() => db.inventoryLogs.orderBy('date').reverse().toArray()) || [];
+  const fixedAssets = useLiveQuery(() => db.fixedAssets.toArray()) || [];
 
   // Laporan States
   const [plReport, setPlReport] = useState<any>(null);
   const [bsReport, setBsReport] = useState<any>(null);
+  const [taxSummary, setTaxSummary] = useState<{ ppnMasukan: number; ppnKeluaran: number; pph21: number; pph23: number; transactions: TaxTransaction[] }>({ ppnMasukan: 0, ppnKeluaran: 0, pph21: 0, pph23: 0, transactions: [] });
+
+  // Aset Tetap States
+  const [showAssetModal, setShowAssetModal] = useState(false);
+  const [assetName, setAssetName] = useState('');
+  const [assetCost, setAssetCost] = useState(0);
+  const [assetLifeYears, setAssetLifeYears] = useState(5);
+  const [assetSalvage, setAssetSalvage] = useState(0);
+  const [assetPurchaseDate, setAssetPurchaseDate] = useState(new Date().toISOString().split('T')[0]);
+  const [isDepreciating, setIsDepreciating] = useState(false);
 
   // AI Narrative Diagnosis State
   const [diagnosisText, setDiagnosisText] = useState('');
@@ -67,6 +81,120 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
     };
     fetchReports();
   }, [journals]);
+
+  // Ambil data Pajak jika jurnal berubah
+  useEffect(() => {
+    const fetchTax = async () => {
+      const summary = await getTaxSummary();
+      setTaxSummary(summary);
+    };
+    fetchTax();
+  }, [journals]);
+
+  const saveNativeFile = async (content: string, filename: string) => {
+    try {
+      const savedPath = await invoke<string>('save_export_file', {
+        filename,
+        content
+      });
+      alert(`Berkas berhasil disimpan secara native di:\n${savedPath}`);
+    } catch (err: any) {
+      console.warn('Gagal menyimpan file secara native via Tauri, beralih ke download browser:', err);
+      downloadCSV(content, filename);
+    }
+  };
+
+  const handleExportEFaktur = async (type: 'MASUKAN' | 'KELUARAN') => {
+    try {
+      const csvContent = await generateEFakturCSV(taxSummary.transactions, type);
+      if (csvContent) {
+        await saveNativeFile(csvContent, `e-Faktur_PPN_${type === 'MASUKAN' ? 'Masukan' : 'Keluaran'}_${new Date().toISOString().split('T')[0]}.csv`);
+      } else {
+        alert('Tidak ada transaksi PPN untuk diekspor.');
+      }
+    } catch (err: any) {
+      alert(`Gagal mengekspor e-Faktur: ${err.message}`);
+    }
+  };
+
+  const handleExportEBupot = async () => {
+    try {
+      const csvContent = await generateEBupotCSV(taxSummary.transactions);
+      if (csvContent) {
+        await saveNativeFile(csvContent, `e-Bupot_PPh21_${new Date().toISOString().split('T')[0]}.csv`);
+      } else {
+        alert('Tidak ada transaksi PPh 21 untuk diekspor.');
+      }
+    } catch (err: any) {
+      alert(`Gagal mengekspor e-Bupot: ${err.message}`);
+    }
+  };
+
+  const downloadCSV = (content: string, filename: string) => {
+    const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", filename);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleAddFixedAsset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!assetName || assetCost <= 0 || assetLifeYears <= 0) {
+      alert('Mohon isi formulir aset dengan benar.');
+      return;
+    }
+    try {
+      await addFixedAsset({
+        id: `fa-${Date.now()}`,
+        name: assetName,
+        purchaseDate: assetPurchaseDate,
+        cost: assetCost,
+        usefulLifeYears: assetLifeYears,
+        salvageValue: assetSalvage
+      });
+
+      // Debit: 1201 (Peralatan Kantor)
+      // Kredit: 1101 (Kas Utama)
+      await postJournalEntry({
+        id: `acq-fa-${Date.now()}`,
+        date: assetPurchaseDate,
+        description: `Perolehan Aset Tetap - ${assetName}`,
+        lines: [
+          { accountCode: '1201', debit: assetCost, credit: 0 },
+          { accountCode: '1101', debit: 0, credit: assetCost }
+        ]
+      });
+
+      alert('Aset tetap berhasil ditambahkan dan jurnal perolehan diposting.');
+      setShowAssetModal(false);
+      setAssetName('');
+      setAssetCost(0);
+      setAssetSalvage(0);
+    } catch (err: any) {
+      alert(`Gagal menambah aset: ${err.message}`);
+    }
+  };
+
+  const handleRunDepreciation = async () => {
+    setIsDepreciating(true);
+    try {
+      const res = await runMonthlyDepreciation();
+      if (res.count > 0) {
+        alert(`Sukses menjalankan penyusutan bulanan untuk ${res.count} aset sebesar Rp ${res.totalAmount.toLocaleString('id-ID')}. Jurnal penyesuaian telah dibuat.`);
+      } else {
+        alert('Tidak ada aset tetap yang memerlukan penyusutan saat ini (sudah disusutkan penuh).');
+      }
+    } catch (err: any) {
+      alert(`Gagal menjalankan penyusutan: ${err.message}`);
+    } finally {
+      setIsDepreciating(false);
+    }
+  };
 
   // Total Nilai Persediaan
   const totalInventoryValue = products.reduce((sum, p) => sum + (p.stockQty * p.averageCost), 0);
@@ -653,9 +781,104 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
           </>
         )}
 
+        {/* Tab: ASET TETAP (Fase 2) */}
+        {activeTab === 'ASETTETAP' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ fontFamily: 'var(--font-display)', fontWeight: 600 }}>Daftar Aset Tetap</h3>
+                <p style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Kelola aset tetap dan jalankan kalkulasi akumulasi penyusutan bulanan (Metode Garis Lurus).</p>
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button className="btn btn-primary" onClick={() => setShowAssetModal(true)}>
+                  <Plus size={12} />
+                  <span>Tambah Aset Tetap</span>
+                </button>
+                <button className="btn btn-secondary" onClick={handleRunDepreciation} disabled={isDepreciating}>
+                  <Play size={12} />
+                  <span>{isDepreciating ? 'Memproses...' : 'Jalankan Penyusutan Bulanan'}</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="table-wrapper">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Nama Aset</th>
+                    <th>Tanggal Perolehan</th>
+                    <th style={{ textAlign: 'right' }}>Harga Perolehan (Rp)</th>
+                    <th style={{ textAlign: 'right' }}>Nilai Residu (Rp)</th>
+                    <th>Umur Ekonomis</th>
+                    <th style={{ textAlign: 'right' }}>Penyusutan Bulanan (Rp)</th>
+                    <th style={{ textAlign: 'right' }}>Akumulasi Penyusutan (Rp)</th>
+                    <th style={{ textAlign: 'right' }}>Nilai Buku (Rp)</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {fixedAssets.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '20px' }}>
+                        Tidak ada aset tetap terdaftar.
+                      </td>
+                    </tr>
+                  ) : (
+                    fixedAssets.map(asset => {
+                      const bookValue = asset.cost - asset.accumulatedDepreciation;
+                      const monthlyDepr = calculateMonthlyDepreciation(asset);
+                      return (
+                        <tr key={asset.id}>
+                          <td><strong>{asset.name}</strong></td>
+                          <td>{asset.purchaseDate}</td>
+                          <td style={{ textAlign: 'right' }}>Rp {asset.cost.toLocaleString('id-ID')}</td>
+                          <td style={{ textAlign: 'right' }}>Rp {asset.salvageValue.toLocaleString('id-ID')}</td>
+                          <td>{asset.usefulLifeYears} Tahun</td>
+                          <td style={{ textAlign: 'right' }}>Rp {monthlyDepr.toLocaleString('id-ID')}</td>
+                          <td style={{ textAlign: 'right' }}>Rp {asset.accumulatedDepreciation.toLocaleString('id-ID')}</td>
+                          <td style={{ textAlign: 'right', fontWeight: 600 }}>Rp {bookValue.toLocaleString('id-ID')}</td>
+                          <td>
+                            {asset.isFullyDepreciated ? (
+                              <span style={{ color: 'var(--accent-success)', fontWeight: 600 }}>Fully Depreciated</span>
+                            ) : (
+                              <span style={{ color: 'var(--text-muted)' }}>Penyusutan Berjalan</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         {/* Tab 6: BANK & PAJAK */}
         {activeTab === 'PAJAK' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+            
+            {/* Ringkasan Saldo Pajak */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
+              <div style={{ background: 'var(--bg-card)', padding: '12px 16px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>e-Faktur PPN Masukan</span>
+                <h3 style={{ fontSize: '18px', fontWeight: 700, marginTop: '4px', color: 'var(--accent-success)' }}>
+                  Rp {taxSummary.ppnMasukan.toLocaleString('id-ID')}
+                </h3>
+              </div>
+              <div style={{ background: 'var(--bg-card)', padding: '12px 16px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>e-Faktur PPN Keluaran</span>
+                <h3 style={{ fontSize: '18px', fontWeight: 700, marginTop: '4px', color: 'var(--accent-warning)' }}>
+                  Rp {taxSummary.ppnKeluaran.toLocaleString('id-ID')}
+                </h3>
+              </div>
+              <div style={{ background: 'var(--bg-card)', padding: '12px 16px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Utang Pajak PPh 21</span>
+                <h3 style={{ fontSize: '18px', fontWeight: 700, marginTop: '4px', color: 'var(--accent-danger)' }}>
+                  Rp {taxSummary.pph21.toLocaleString('id-ID')}
+                </h3>
+              </div>
+            </div>
             
             {/* Rekonsiliasi Bank */}
             <div>
@@ -712,18 +935,22 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
             {/* Pajak Indonesia & Backup Section */}
             <div style={{ display: 'flex', gap: '20px' }}>
               <div style={{ flex: 1, background: 'var(--bg-card)', padding: '20px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
-                <h4 style={{ fontFamily: 'var(--font-display)', fontWeight: 600, marginBottom: '12px' }}>e-Faktur Pajak</h4>
+                <h4 style={{ fontFamily: 'var(--font-display)', fontWeight: 600, marginBottom: '12px' }}>e-Faktur Pajak ( simulator )</h4>
                 <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-                  Unduh data transaksi terpilih dalam skema template CSV Direktorat Jenderal Pajak (DJP).
+                  Unduh template e-Faktur PPN (Masukan/Keluaran) dan e-Bupot PPh 21 dari sistem untuk pelaporan DJP.
                 </p>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button className="btn btn-secondary" onClick={() => alert('e-Faktur CSV siap diunduh!')}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                  <button className="btn btn-secondary" onClick={() => handleExportEFaktur('MASUKAN')}>
                     <Download size={12} />
-                    <span>e-Faktur PPN</span>
+                    <span>e-Faktur PPN Masukan</span>
                   </button>
-                  <button className="btn btn-secondary" onClick={() => alert('e-Bupot CSV siap diunduh!')}>
+                  <button className="btn btn-secondary" onClick={() => handleExportEFaktur('KELUARAN')}>
                     <Download size={12} />
-                    <span>e-Bupot PPh</span>
+                    <span>e-Faktur PPN Keluaran</span>
+                  </button>
+                  <button className="btn btn-secondary" onClick={handleExportEBupot}>
+                    <Download size={12} />
+                    <span>e-Bupot PPh 21</span>
                   </button>
                 </div>
               </div>
@@ -910,6 +1137,48 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' }}>
                 <button type="button" className="btn btn-secondary" onClick={() => setShowAdjustModal(false)}>Batal</button>
                 <button type="submit" className="btn btn-primary">Post Penyesuaian</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Tambah Aset Tetap (Fase 2) */}
+      {showAssetModal && (
+        <div className="modal-overlay">
+          <div className="modal-container" style={{ maxWidth: '400px' }}>
+            <div className="modal-header">
+              <h3 style={{ fontFamily: 'var(--font-display)', fontWeight: 600 }}>Tambah Aset Tetap Baru</h3>
+              <button style={{ background: 'transparent', border: 'none', color: 'white', cursor: 'pointer' }} onClick={() => setShowAssetModal(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            <form onSubmit={handleAddFixedAsset} className="modal-body">
+              <div className="form-group">
+                <label className="form-label">Nama Aset Tetap</label>
+                <input type="text" className="form-input" placeholder="contoh: Mesin Espresso, Komputer Kasir" value={assetName} onChange={e => setAssetName(e.target.value)} required />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Tanggal Pembelian</label>
+                <input type="date" className="form-input" value={assetPurchaseDate} onChange={e => setAssetPurchaseDate(e.target.value)} required />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Harga Perolehan (Rp)</label>
+                <input type="number" className="form-input" placeholder="contoh: 15000000" value={assetCost || ''} onChange={e => setAssetCost(parseFloat(e.target.value) || 0)} required />
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <div className="form-group" style={{ flex: 1 }}>
+                  <label className="form-label">Umur Ekonomis (Tahun)</label>
+                  <input type="number" className="form-input" placeholder="contoh: 5" value={assetLifeYears || ''} onChange={e => setAssetLifeYears(parseInt(e.target.value) || 0)} required />
+                </div>
+                <div className="form-group" style={{ flex: 1 }}>
+                  <label className="form-label">Nilai Residu / Sisa (Rp)</label>
+                  <input type="number" className="form-input" placeholder="contoh: 3000000" value={assetSalvage || ''} onChange={e => setAssetSalvage(parseFloat(e.target.value) || 0)} required />
+                </div>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' }}>
+                <button type="button" className="btn btn-secondary" onClick={() => setShowAssetModal(false)}>Batal</button>
+                <button type="submit" className="btn btn-primary">Simpan Aset</button>
               </div>
             </form>
           </div>

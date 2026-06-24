@@ -50,6 +50,7 @@ export interface BackupData {
   bankStatements: BankStatementItem[];
   products: Product[];
   inventoryLogs: InventoryLog[];
+  fixedAssets?: FixedAsset[];
 }
 
 export interface Product {
@@ -70,4 +71,17 @@ export interface InventoryLog {
   cost: number;
   reference?: string; // Menyimpan Ref ID Jurnal terkait
 }
+
+export interface FixedAsset {
+  id: string;
+  name: string;
+  purchaseDate: string; // YYYY-MM-DD
+  cost: number;         // Harga perolehan
+  usefulLifeYears: number; // Umur ekonomis (tahun)
+  salvageValue: number;   // Nilai sisa / residu
+  accumulatedDepreciation: number; // Akumulasi penyusutan saat ini
+  isFullyDepreciated?: boolean;   // Status jika umur ekonomis habis
+}
+
+export type UserRole = 'OWNER' | 'ACCOUNTANT' | 'STAFF';
 

@@ -9,10 +9,11 @@ import { ChatInterface } from './components/AssistantMode/ChatInterface';
 import { LedgerDashboard } from './components/AccountantMode/LedgerDashboard';
 import { TitleBar } from './components/TitleBar';
 
-type ModuleTab = 'JURNAL' | 'BUKUBESAR' | 'PERSEDIAAN' | 'LABARUGI' | 'NERACA' | 'PAJAK';
+type ModuleTab = 'JURNAL' | 'BUKUBESAR' | 'PERSEDIAAN' | 'ASETTETAP' | 'LABARUGI' | 'NERACA' | 'PAJAK';
 
 function App() {
   const [activeTab, setActiveTab] = useState<ModuleTab>('JURNAL');
+  const [userRole, setUserRole] = useState<'OWNER' | 'ACCOUNTANT' | 'STAFF'>('OWNER');
   const [isDbReady, setIsDbReady] = useState(false);
   const [showPreviewPane, setShowPreviewPane] = useState(true);
   const [previewTab, setPreviewTab] = useState<'WARROOM' | 'CHAT'>('WARROOM');
@@ -36,6 +37,7 @@ function App() {
       case 'JURNAL': return 'Jurnal Umum';
       case 'BUKUBESAR': return 'Daftar Akun (COA)';
       case 'PERSEDIAAN': return 'Persediaan';
+      case 'ASETTETAP': return 'Aset Tetap';
       case 'LABARUGI': return 'Laporan Laba Rugi';
       case 'NERACA': return 'Laporan Neraca';
       case 'PAJAK': return 'Bank & Perpajakan';
@@ -112,34 +114,72 @@ function App() {
               <Layers size={13} />
               <span>Persediaan</span>
             </div>
+            
+            {userRole !== 'STAFF' && (
+              <div 
+                className={`sidebar-item ${activeTab === 'ASETTETAP' ? 'active' : ''}`}
+                onClick={() => setActiveTab('ASETTETAP')}
+              >
+                <Settings size={13} />
+                <span>Aset Tetap</span>
+              </div>
+            )}
           </nav>
 
-          <div className="sidebar-section-title" style={{ marginTop: '12px' }}>Laporan Keuangan</div>
-          <nav className="sidebar-menu">
-            <div 
-              className={`sidebar-item ${activeTab === 'LABARUGI' ? 'active' : ''}`}
-              onClick={() => setActiveTab('LABARUGI')}
-            >
-              <FileText size={13} />
-              <span>Laba Rugi</span>
-            </div>
+          {userRole !== 'STAFF' && (
+            <>
+              <div className="sidebar-section-title" style={{ marginTop: '12px' }}>Laporan Keuangan</div>
+              <nav className="sidebar-menu">
+                <div 
+                  className={`sidebar-item ${activeTab === 'LABARUGI' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('LABARUGI')}
+                >
+                  <FileText size={13} />
+                  <span>Laba Rugi</span>
+                </div>
 
-            <div 
-              className={`sidebar-item ${activeTab === 'NERACA' ? 'active' : ''}`}
-              onClick={() => setActiveTab('NERACA')}
-            >
-              <FileText size={13} />
-              <span>Neraca</span>
-            </div>
+                <div 
+                  className={`sidebar-item ${activeTab === 'NERACA' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('NERACA')}
+                >
+                  <FileText size={13} />
+                  <span>Neraca</span>
+                </div>
 
-            <div 
-              className={`sidebar-item ${activeTab === 'PAJAK' ? 'active' : ''}`}
-              onClick={() => setActiveTab('PAJAK')}
-            >
-              <Settings size={13} />
-              <span>Bank & Pajak</span>
-            </div>
-          </nav>
+                <div 
+                  className={`sidebar-item ${activeTab === 'PAJAK' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('PAJAK')}
+                >
+                  <Settings size={13} />
+                  <span>Bank & Pajak</span>
+                </div>
+              </nav>
+            </>
+          )}
+        </div>
+
+        {/* Role Selector Simulator di Bawah Sidebar */}
+        <div style={{ padding: '6px 8px', borderTop: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <span style={{ fontSize: '8px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Peran Pengguna (Sim)</span>
+          <select 
+            value={userRole} 
+            onChange={e => {
+              const role = e.target.value as 'OWNER' | 'ACCOUNTANT' | 'STAFF';
+              setUserRole(role);
+              if (role === 'ACCOUNTANT') {
+                setShowPreviewPane(false);
+              } else if (role === 'STAFF') {
+                setShowPreviewPane(true);
+                setActiveTab('JURNAL');
+              }
+            }}
+            className="form-input"
+            style={{ fontSize: '9.5px', padding: '2px 4px', height: '20px', background: 'var(--bg-card)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '3px', outline: 'none' }}
+          >
+            <option value="OWNER">Pemilik Bisnis (Owner)</option>
+            <option value="ACCOUNTANT">Akuntan (Full Ledger)</option>
+            <option value="STAFF">Staff Input (Chat AI)</option>
+          </select>
         </div>
 
         {/* System Info di Bawah Sidebar */}
@@ -174,24 +214,26 @@ function App() {
                 <span className="active-path">{getTabLabel(activeTab)}</span>
               </div>
               
-              <div className="command-actions">
-                <button 
-                  className="btn btn-secondary"
-                  style={{ padding: '3px 8px' }}
-                  onClick={() => setShowPreviewPane(!showPreviewPane)}
-                  title="Toggle Asisten AI (Preview Pane)"
-                >
-                  <Sidebar size={12} style={{ color: showPreviewPane ? 'var(--accent-primary)' : 'var(--text-secondary)' }} />
-                  <span>Asisten AI</span>
-                </button>
-              </div>
+              {userRole !== 'ACCOUNTANT' && (
+                <div className="command-actions">
+                  <button 
+                    className="btn btn-secondary"
+                    style={{ padding: '3px 8px' }}
+                    onClick={() => setShowPreviewPane(!showPreviewPane)}
+                    title="Toggle Asisten AI (Preview Pane)"
+                  >
+                    <Sidebar size={12} style={{ color: showPreviewPane ? 'var(--accent-primary)' : 'var(--text-secondary)' }} />
+                    <span>Asisten AI</span>
+                  </button>
+                </div>
+              )}
             </div>
 
             <LedgerDashboard activeTab={activeTab} />
           </main>
 
           {/* PANEL KANAN: Preview Pane (Asisten AI - War Room ATAU Chat) */}
-          <aside className={`preview-assistant-pane ${showPreviewPane ? '' : 'collapsed'}`}>
+          <aside className={`preview-assistant-pane ${(showPreviewPane && userRole !== 'ACCOUNTANT') ? '' : 'collapsed'}`}>
             <div className="panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div className="panel-title">
                 <Sparkles size={12} style={{ color: 'var(--accent-primary)' }} />

@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie';
-import type { Account, JournalEntry, Contact, BankStatementItem, Product, InventoryLog } from '../types/ledger';
+import type { Account, JournalEntry, Contact, BankStatementItem, Product, InventoryLog, FixedAsset } from '../types/ledger';
 
 // Interface untuk riwayat obrolan di Mode Asisten
 export interface ChatMessage {
@@ -20,6 +20,7 @@ class AkuntaDatabase extends Dexie {
   chatMessages!: Table<ChatMessage, number>;
   products!: Table<Product, string>;
   inventoryLogs!: Table<InventoryLog, string>;
+  fixedAssets!: Table<FixedAsset, string>;
 
   constructor() {
     super('AkuntaDatabase');
@@ -31,6 +32,7 @@ class AkuntaDatabase extends Dexie {
       chatMessages: '++id, sender, timestamp',
       products: 'id, name, sku',
       inventoryLogs: 'id, productId, date, type',
+      fixedAssets: 'id, name, purchaseDate',
     });
   }
 }
@@ -105,6 +107,31 @@ export async function initializeDatabase() {
       { id: 'log-02', productId: 'prod-02', date: '2026-06-20', type: 'MASUK', qty: 20, cost: 15000, reference: 'INIT' },
     ];
     await db.inventoryLogs.bulkAdd(defaultInventoryLogs);
+
+    // Tambah aset tetap default
+    const defaultFixedAssets: FixedAsset[] = [
+      {
+        id: 'fa-01',
+        name: 'Mesin Espresso La Marzocco',
+        purchaseDate: '2026-01-10',
+        cost: 15000000,
+        usefulLifeYears: 5,
+        salvageValue: 3000000,
+        accumulatedDepreciation: 1000000, // 5 bulan penyusutan: (15jt - 3jt)/60 = 200rb/bln
+        isFullyDepreciated: false
+      },
+      {
+        id: 'fa-02',
+        name: 'iPad Pro Kasir & Stand',
+        purchaseDate: '2026-03-15',
+        cost: 6000000,
+        usefulLifeYears: 3,
+        salvageValue: 600000,
+        accumulatedDepreciation: 450000, // 3 bulan penyusutan: (6jt - 600rb)/36 = 150rb/bln
+        isFullyDepreciated: false
+      }
+    ];
+    await db.fixedAssets.bulkAdd(defaultFixedAssets);
 
     // Tambahkan sapaan awal dari AI di chat
     await db.chatMessages.add({
