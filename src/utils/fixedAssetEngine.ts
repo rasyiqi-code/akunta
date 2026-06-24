@@ -1,11 +1,8 @@
-import { db } from './db';
-import type { FixedAsset, JournalEntry, JournalLine } from '../types/ledger';
-import { postJournalEntry } from './ledgerEngine';
+import type { FixedAsset } from '../types/ledger';
 import { invoke } from '@tauri-apps/api/core';
 
 /**
- * Menghitung penyusutan bulanan (Straight-Line)
- * Dipanggil secara lokal jika diperlukan untuk render cepat
+ * Menghitung penyusutan bulanan (Straight-Line) secara native di Rust
  */
 export async function calculateMonthlyDepreciation(asset: FixedAsset): Promise<number> {
   try {
@@ -13,7 +10,7 @@ export async function calculateMonthlyDepreciation(asset: FixedAsset): Promise<n
       assetJson: JSON.stringify(asset)
     });
   } catch (err) {
-    console.warn('Gagal menghitung penyusutan di Rust, menggunakan fallback TS:', err);
+    console.error('Gagal menghitung penyusutan bulanan di Rust:', err);
     if (asset.usefulLifeYears <= 0) return 0;
     const depreciableAmount = asset.cost - asset.salvageValue;
     const totalMonths = asset.usefulLifeYears * 12;
@@ -22,51 +19,17 @@ export async function calculateMonthlyDepreciation(asset: FixedAsset): Promise<n
 }
 
 /**
- * Menjalankan penyusutan aset secara NATIVE di Rust backend via Tauri.
- * Dan memperbarui database lokal offline IndexedDB di frontend.
+ * Menjalankan penyusutan aset secara NATIVE di Rust backend via SQLite transaction.
  */
 export async function runMonthlyDepreciation(): Promise<{ count: number; totalAmount: number }> {
-  const assets = await db.fixedAssets.toArray();
-  const todayStr = new Date().toISOString().split('T')[0];
-
   try {
-    // Panggil logic Rust secara native
-    const resultJson = await invoke<string>('calculate_depreciation_rust', {
-      assetsJson: JSON.stringify(assets)
-    });
-
+    const resultJson = await invoke<string>('calculate_depreciation_rust');
     const result = JSON.parse(resultJson);
-
-    // Update database IndexedDB dengan aset yang telah diperbarui oleh Rust
-    for (const asset of result.updatedAssets) {
-      await db.fixedAssets.put(asset);
-    }
-
-    // Posting Jurnal Penyesuaian ke Ledger di frontend berdasarkan hasil dari Rust
-    let count = 0;
-    for (const stub of result.postedJournals) {
-      const lines: JournalLine[] = [
-        { accountCode: '5205', debit: stub.amount, credit: 0 },
-        { accountCode: '1202', debit: 0, credit: stub.amount }
-      ];
-
-      const journal: JournalEntry = {
-        id: `depr-${stub.assetId}-${Date.now()}-${count}`,
-        date: todayStr,
-        description: `Penyesuaian Penyusutan Bulanan (Rust Native) - ${stub.assetName}`,
-        reference: `ASSET/${stub.assetId}`,
-        lines
-      };
-
-      await postJournalEntry(journal);
-      count++;
-    }
-
+    
     return {
       count: result.postedJournals.length,
       totalAmount: result.totalDepreciated
     };
-
   } catch (err: any) {
     console.error('Error running depreciation in Rust:', err);
     throw new Error(`Gagal penyusutan native: ${err.message || err}`);
@@ -74,13 +37,15 @@ export async function runMonthlyDepreciation(): Promise<{ count: number; totalAm
 }
 
 /**
- * Menambahkan aset tetap baru ke database
+ * Menambahkan aset tetap baru ke database Rust SQLite secara native
  */
 export async function addFixedAsset(asset: Omit<FixedAsset, 'accumulatedDepreciation' | 'isFullyDepreciated'>): Promise<void> {
-  const newAsset: FixedAsset = {
-    ...asset,
-    accumulatedDepreciation: 0,
-    isFullyDepreciated: false
-  };
-  await db.fixedAssets.add(newAsset);
+  try {
+    await invoke<string>('add_fixed_asset_rust', {
+      assetJson: JSON.stringify(asset)
+    });
+  } catch (err: any) {
+    console.error('Gagal menambah aset tetap di Rust:', err);
+    throw new Error(err.message || err);
+  }
 }

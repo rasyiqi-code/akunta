@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
+import { listen } from '@tauri-apps/api/event';
 import { 
   FileSpreadsheet, Database, Play, CheckCircle, 
   AlertTriangle, Upload, Download, Plus, FileText, X, Settings
@@ -12,7 +12,7 @@ import {
 } from '../../utils/ledgerEngine';
 import { adjustProductStock } from '../../utils/inventoryEngine';
 import { runMonthlyDepreciation, addFixedAsset, calculateMonthlyDepreciation } from '../../utils/fixedAssetEngine';
-import { getTaxSummary, generateEFakturCSV, generateEBupotCSV, type TaxTransaction } from '../../utils/pajakEngine';
+import { getTaxSummary, generateEFakturCSV, generateEBupotCSV, reconcileBankStatement, type TaxTransaction } from '../../utils/pajakEngine';
 import { getNarrativeAnalysis } from '../../utils/gemini';
 import * as XLSX from 'xlsx';
 
@@ -39,13 +39,57 @@ interface LedgerDashboardProps {
 }
 
 export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) => {
-  // Database Hooks
-  const journals = useLiveQuery(() => db.journals.orderBy('date').reverse().toArray()) || [];
-  const accounts = useLiveQuery(() => db.accounts.toArray()) || [];
-  const bankStatements = useLiveQuery(() => db.bankStatements.toArray()) || [];
-  const products = useLiveQuery(() => db.products.toArray()) || [];
-  const inventoryLogs = useLiveQuery(() => db.inventoryLogs.orderBy('date').reverse().toArray()) || [];
-  const fixedAssets = useLiveQuery(() => db.fixedAssets.toArray()) || [];
+  // Database States Lokal
+  const [journals, setJournals] = useState<any[]>([]);
+  const [accounts, setAccounts] = useState<any[]>([]);
+  const [bankStatements, setBankStatements] = useState<any[]>([]);
+  const [products, setProducts] = useState<any[]>([]);
+  const [inventoryLogs, setInventoryLogs] = useState<any[]>([]);
+  const [fixedAssets, setFixedAssets] = useState<any[]>([]);
+
+  // Fungsi untuk menarik data dari Rust SQLite
+  const fetchData = async () => {
+    try {
+      const [jList, aList, bList, pList, lList, fList] = await Promise.all([
+        db.journals.toArray(),
+        db.accounts.toArray(),
+        db.bankStatements.toArray(),
+        db.products.toArray(),
+        db.inventoryLogs.toArray(),
+        db.fixedAssets.toArray()
+      ]);
+      setJournals(jList);
+      setAccounts(aList);
+      setBankStatements(bList);
+      setProducts(pList);
+      setInventoryLogs(lList);
+      setFixedAssets(fList);
+    } catch (e) {
+      console.error("Gagal mengambil data dari SQLite backend:", e);
+    }
+  };
+
+  // Inisialisasi data & dengarkan update database dari Rust
+  useEffect(() => {
+    let active = true;
+    let unlistenFn: (() => void) | undefined;
+
+    const setupListener = async () => {
+      unlistenFn = await listen('db-update', () => {
+        if (active) {
+          fetchData();
+        }
+      });
+    };
+
+    fetchData();
+    setupListener();
+
+    return () => {
+      active = false;
+      if (unlistenFn) unlistenFn();
+    };
+  }, []);
 
   // Laporan States
   const [plReport, setPlReport] = useState<any>(null);
@@ -97,7 +141,9 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
       setPlReport(pl);
       setBsReport(bs);
     };
-    fetchReports();
+    if (journals.length > 0) {
+      fetchReports();
+    }
   }, [journals]);
 
   // Ambil data Pajak jika jurnal berubah
@@ -106,8 +152,11 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
       const summary = await getTaxSummary();
       setTaxSummary(summary);
     };
-    fetchTax();
+    if (journals.length > 0) {
+      fetchTax();
+    }
   }, [journals]);
+
 
   const saveNativeFile = async (content: string, filename: string) => {
     try {
@@ -221,34 +270,28 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
   const handleBankMatch = async (stmtId: string, statementDesc: string, amount: number) => {
     setReconcilingId(stmtId);
     try {
-      const targetVal = Math.abs(amount);
-      const matchedJrn = journals.find(j => {
-        const totalDebit = j.lines.reduce((s, l) => s + l.debit, 0);
-        return Math.abs(totalDebit - targetVal) < 1;
-      });
+      const statementDate = new Date().toISOString().split('T')[0];
+      const matchResult = await reconcileBankStatement(journals, statementDate, statementDesc, amount, stmtId);
 
-      if (matchedJrn) {
-        await db.bankStatements.update(stmtId, { matchedJournalId: matchedJrn.id, confidenceScore: 95 });
-        alert(`Berhasil merekonsiliasi dengan Jurnal: ${matchedJrn.description} (Skor AI: 95%)`);
-      } else {
-        const lines = amount > 0 
-          ? [
-              { accountCode: '1101', debit: amount, credit: 0 },
-              { accountCode: '4101', debit: 0, credit: amount }
-            ]
-          : [
-              { accountCode: '5206', debit: targetVal, credit: 0 },
-              { accountCode: '1101', debit: 0, credit: targetVal }
-            ];
-
+      if (matchResult.matched && matchResult.matchedJournalId) {
+        await db.bankStatements.update(stmtId, { 
+          matchedJournalId: matchResult.matchedJournalId, 
+          confidenceScore: matchResult.confidenceScore 
+        });
+        const matchedJrn = journals.find(j => j.id === matchResult.matchedJournalId);
+        alert(`Berhasil merekonsiliasi dengan Jurnal: ${matchedJrn?.description || matchResult.matchedJournalId} (Skor AI: ${matchResult.confidenceScore}%)`);
+      } else if (matchResult.suggestedLines && matchResult.suggestedDescription) {
         const newJrnId = await postJournalEntry({
-          date: new Date().toISOString().split('T')[0],
-          description: `Rekonsiliasi Bank: ${statementDesc}`,
-          lines: lines
+          date: statementDate,
+          description: matchResult.suggestedDescription,
+          lines: matchResult.suggestedLines
         });
 
-        await db.bankStatements.update(stmtId, { matchedJournalId: newJrnId, confidenceScore: 85 });
-        alert(`Jurnal penyesuaian otomatis dibuat dan direkonsiliasi: ID ${newJrnId} (Skor AI: 85%)`);
+        await db.bankStatements.update(stmtId, { 
+          matchedJournalId: newJrnId, 
+          confidenceScore: matchResult.confidenceScore 
+        });
+        alert(`Jurnal penyesuaian otomatis dibuat oleh Rust: ID ${newJrnId} (Skor AI: ${matchResult.confidenceScore}%)`);
       }
     } catch (err: any) {
       alert(`Gagal rekonsiliasi: ${err.message}`);
@@ -280,7 +323,7 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
 
     if (reportType === 'JURNAL') {
       journals.forEach(j => {
-        j.lines.forEach(l => {
+        j.lines.forEach((l: any) => {
           dataToExport.push({
             'ID Jurnal': j.id,
             'Tanggal': j.date,
@@ -477,7 +520,7 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
                       <td>
                         <div style={{ fontWeight: 600, marginBottom: '6px' }}>{j.description}</div>
                         <div className="jurnal-detail-lines">
-                          {j.lines.map((l, i) => (
+                          {j.lines.map((l: any, i: number) => (
                             <div key={i} className={`jurnal-line-row ${l.credit > 0 ? 'credit' : 'debit'}`}>
                               <span>
                                 {l.accountCode} - {accounts.find(a => a.code === l.accountCode)?.name || 'Akun'}
@@ -490,10 +533,10 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
                         </div>
                       </td>
                       <td className="amount-col" style={{ verticalAlign: 'top' }}>
-                        {j.lines.reduce((s, l) => s + l.debit, 0).toLocaleString('id-ID')}
+                        {j.lines.reduce((s: number, l: any) => s + l.debit, 0).toLocaleString('id-ID')}
                       </td>
                       <td className="amount-col" style={{ verticalAlign: 'top' }}>
-                        {j.lines.reduce((s, l) => s + l.credit, 0).toLocaleString('id-ID')}
+                        {j.lines.reduce((s: number, l: any) => s + l.credit, 0).toLocaleString('id-ID')}
                       </td>
                       <td style={{ verticalAlign: 'top', width: '80px' }}>
                         {j.isAnomaly ? (

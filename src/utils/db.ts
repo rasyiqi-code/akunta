@@ -1,4 +1,4 @@
-import Dexie, { type Table } from 'dexie';
+import { invoke } from '@tauri-apps/api/core';
 import type { Account, JournalEntry, Contact, BankStatementItem, Product, InventoryLog, FixedAsset } from '../types/ledger';
 
 // Interface untuk riwayat obrolan di Mode Asisten
@@ -7,137 +7,195 @@ export interface ChatMessage {
   sender: 'USER' | 'AI';
   text: string;
   timestamp: string;
-  // Metadata tambahan untuk render kartu interaktif jika diperlukan
   cardType?: 'CONFIRMATION' | 'STORY_REPORT' | 'ALERT' | 'TRANSACTION_SUCCESS';
   cardData?: any; 
+  imageUrl?: string; // Menyimpan data URL gambar Base64
 }
 
-class AkuntaDatabase extends Dexie {
-  accounts!: Table<Account, string>;
-  journals!: Table<JournalEntry, string>;
-  contacts!: Table<Contact, string>;
-  bankStatements!: Table<BankStatementItem, string>;
-  chatMessages!: Table<ChatMessage, number>;
-  products!: Table<Product, string>;
-  inventoryLogs!: Table<InventoryLog, string>;
-  fixedAssets!: Table<FixedAsset, string>;
-
-  constructor() {
-    super('AkuntaDatabase');
-    this.version(2).stores({
-      accounts: 'code, name, type, normalBalance, parentCode',
-      journals: 'id, date, isAnomaly',
-      contacts: 'id, name, type',
-      bankStatements: 'id, date, matchedJournalId',
-      chatMessages: '++id, sender, timestamp',
-      products: 'id, name, sku',
-      inventoryLogs: 'id, productId, date, type',
-      fixedAssets: 'id, name, purchaseDate',
-    });
-  }
-}
-
-export const db = new AkuntaDatabase();
-
-// Inisialisasi Chart of Accounts (COA) Standar PSAK EMKM jika database kosong
-export const DEFAULT_ACCOUNTS: Account[] = [
-  // ASET
-  { code: '1101', name: 'Kas Utama', type: 'ASET', normalBalance: 'D' },
-  { code: '1102', name: 'Bank BCA', type: 'ASET', normalBalance: 'D' },
-  { code: '1103', name: 'Bank Mandiri', type: 'ASET', normalBalance: 'D' },
-  { code: '1104', name: 'Piutang Usaha', type: 'ASET', normalBalance: 'D' },
-  { code: '1105', name: 'Persediaan Barang Dagang', type: 'ASET', normalBalance: 'D' },
-  { code: '1106', name: 'PPN Masukan', type: 'ASET', normalBalance: 'D' },
-  { code: '1201', name: 'Peralatan Kantor', type: 'ASET', normalBalance: 'D' },
-  { code: '1202', name: 'Akumulasi Penyusutan Peralatan', type: 'ASET', normalBalance: 'K' },
-  // KEWAJIBAN
-  { code: '2101', name: 'Utang Usaha', type: 'KEWAJIBAN', normalBalance: 'K' },
-  { code: '2102', name: 'Utang Pajak PPh 21', type: 'KEWAJIBAN', normalBalance: 'K' },
-  { code: '2103', name: 'PPN Keluaran', type: 'KEWAJIBAN', normalBalance: 'K' },
-  // EKUITAS
-  { code: '3101', name: 'Modal Pemilik', type: 'EKUITAS', normalBalance: 'K' },
-  { code: '3102', name: 'Laba Ditahan', type: 'EKUITAS', normalBalance: 'K' },
-  // PENDAPATAN
-  { code: '4101', name: 'Pendapatan Penjualan', type: 'PENDAPATAN', normalBalance: 'K' },
-  { code: '4102', name: 'Pendapatan Jasa', type: 'PENDAPATAN', normalBalance: 'K' },
-  // BEBAN
-  { code: '5101', name: 'Beban Pokok Penjualan (HPP)', type: 'BEBAN', normalBalance: 'D' },
-  { code: '5201', name: 'Beban Gaji', type: 'BEBAN', normalBalance: 'D' },
-  { code: '5202', name: 'Beban Sewa Ruko', type: 'BEBAN', normalBalance: 'D' },
-  { code: '5203', name: 'Beban Listrik, Air & Internet', type: 'BEBAN', normalBalance: 'D' },
-  { code: '5204', name: 'Beban Iklan & Pemasaran', type: 'BEBAN', normalBalance: 'D' },
-  { code: '5205', name: 'Beban Penyusutan', type: 'BEBAN', normalBalance: 'D' },
-  { code: '5206', name: 'Beban Operasional Lainnya', type: 'BEBAN', normalBalance: 'D' },
-];
-
-export async function initializeDatabase() {
-  const count = await db.accounts.count();
-  if (count === 0) {
-    // Inisialisasi COA
-    await db.accounts.bulkAdd(DEFAULT_ACCOUNTS);
-
-    // Tambah kontak default
-    const defaultContacts: Contact[] = [
-      { id: 'c-01', name: 'Umum / Tunai', type: 'CUSTOMER' },
-      { id: 'c-02', name: 'PT Sejahtera Mulia', type: 'CUSTOMER' },
-      { id: 'v-01', name: 'Supplier Kopi Indonesia', type: 'VENDOR' },
-      { id: 'v-02', name: 'PLN Persero', type: 'VENDOR' },
-    ];
-    await db.contacts.bulkAdd(defaultContacts);
-
-    // Tambah beberapa transaksi bank awal untuk demo rekonsiliasi
-    const defaultStatements: BankStatementItem[] = [
-      { id: 'st-01', date: '2026-06-20', description: 'TRANSFER DARI PT SEJAHTERA', amount: 5000000 },
-      { id: 'st-02', date: '2026-06-21', description: 'BIAYA ADMIN BANK', amount: -15000 },
-      { id: 'st-03', date: '2026-06-22', description: 'TARIKAN TUNAI KAS', amount: -2000000 },
-      { id: 'st-04', date: '2026-06-23', description: 'PEMBAYARAN ZOOM INC', amount: -250000 },
-    ];
-    await db.bankStatements.bulkAdd(defaultStatements);
-
-    // Tambah produk inventaris default
-    const defaultProducts: Product[] = [
-      { id: 'prod-01', name: 'Biji Kopi Arabika', sku: 'KOPI-ARB', stockQty: 10, averageCost: 40000, sellingPrice: 60000 },
-      { id: 'prod-02', name: 'Suku UHT 1L', sku: 'MILK-UHT', stockQty: 20, averageCost: 15000, sellingPrice: 22000 },
-    ];
-    await db.products.bulkAdd(defaultProducts);
-
-    // Tambah log mutasi persediaan awal
-    const defaultInventoryLogs: InventoryLog[] = [
-      { id: 'log-01', productId: 'prod-01', date: '2026-06-20', type: 'MASUK', qty: 10, cost: 40000, reference: 'INIT' },
-      { id: 'log-02', productId: 'prod-02', date: '2026-06-20', type: 'MASUK', qty: 20, cost: 15000, reference: 'INIT' },
-    ];
-    await db.inventoryLogs.bulkAdd(defaultInventoryLogs);
-
-    // Tambah aset tetap default
-    const defaultFixedAssets: FixedAsset[] = [
-      {
-        id: 'fa-01',
-        name: 'Mesin Espresso La Marzocco',
-        purchaseDate: '2026-01-10',
-        cost: 15000000,
-        usefulLifeYears: 5,
-        salvageValue: 3000000,
-        accumulatedDepreciation: 1000000, // 5 bulan penyusutan: (15jt - 3jt)/60 = 200rb/bln
-        isFullyDepreciated: false
-      },
-      {
-        id: 'fa-02',
-        name: 'iPad Pro Kasir & Stand',
-        purchaseDate: '2026-03-15',
-        cost: 6000000,
-        usefulLifeYears: 3,
-        salvageValue: 600000,
-        accumulatedDepreciation: 450000, // 3 bulan penyusutan: (6jt - 600rb)/36 = 150rb/bln
-        isFullyDepreciated: false
+// Facade / Pembungkus Asinkron untuk mengalihkan Dexie IndexedDB ke SQLite Rust Native
+export const db = {
+  accounts: {
+    toArray: async (): Promise<Account[]> => {
+      try {
+        const res = await invoke<string>('get_accounts_rust');
+        return JSON.parse(res);
+      } catch (err) {
+        console.error('Error fetching accounts from Rust SQLite:', err);
+        return [];
       }
-    ];
-    await db.fixedAssets.bulkAdd(defaultFixedAssets);
-
-    // Tambahkan sapaan awal dari AI di chat
-    await db.chatMessages.add({
-      sender: 'AI',
-      text: 'Halo! Saya Akunta AI, asisten keuangan pribadi Anda. Ketik apa saja untuk mencatat transaksi, seperti: \n- *"Jual kopi susu 50rb tunai"* \n- *"Bayar sewa ruko 3jt pakai Bank Mandiri"* \n- *"Tampilkan laporan laba rugi bulan ini"*',
-      timestamp: new Date().toISOString(),
-    });
+    },
+    count: async (): Promise<number> => {
+      const accounts = await db.accounts.toArray();
+      return accounts.length;
+    },
+    get: async (code: string): Promise<Account | undefined> => {
+      const accounts = await db.accounts.toArray();
+      return accounts.find(a => a.code === code);
+    }
+  },
+  
+  journals: {
+    toArray: async (): Promise<JournalEntry[]> => {
+      try {
+        const res = await invoke<string>('get_journals_rust');
+        return JSON.parse(res);
+      } catch (err) {
+        console.error('Error fetching journals from Rust SQLite:', err);
+        return [];
+      }
+    },
+    put: async (entry: JournalEntry): Promise<string> => {
+      return await invoke<string>('post_journal_entry_rust', {
+        entryJson: JSON.stringify(entry)
+      });
+    }
+  },
+  
+  chatMessages: {
+    toArray: async (): Promise<ChatMessage[]> => {
+      try {
+        const res = await invoke<string>('get_chat_messages_rust');
+        const list = JSON.parse(res);
+        return list.map((m: any) => ({
+          id: m.id,
+          sender: m.sender,
+          text: m.text,
+          timestamp: m.timestamp,
+          cardType: m.cardType || undefined,
+          cardData: m.cardData ? JSON.parse(m.cardData) : undefined,
+          imageUrl: m.imageUrl || undefined
+        }));
+      } catch (err) {
+        console.error('Error fetching chat messages from Rust SQLite:', err);
+        return [];
+      }
+    },
+    add: async (msg: ChatMessage): Promise<number> => {
+      return await invoke<number>('add_chat_message_rust', {
+        sender: msg.sender,
+        text: msg.text,
+        timestamp: msg.timestamp || new Date().toISOString(),
+        cardType: msg.cardType || null,
+        cardDataJson: msg.cardData ? JSON.stringify(msg.cardData) : null,
+        imageUrl: msg.imageUrl || null
+      });
+    },
+    update: async (id: number, changes: Partial<ChatMessage>): Promise<void> => {
+      return await invoke<void>('update_chat_message_rust', {
+        id,
+        text: changes.text || '',
+        cardType: changes.cardType || null,
+        cardDataJson: changes.cardData ? JSON.stringify(changes.cardData) : null
+      });
+    },
+    clear: async (): Promise<void> => {
+      return await invoke<void>('clear_chat_messages_rust');
+    }
+  },
+  
+  products: {
+    toArray: async (): Promise<Product[]> => {
+      try {
+        const res = await invoke<string>('get_products_rust');
+        return JSON.parse(res);
+      } catch (err) {
+        console.error('Error fetching products from Rust SQLite:', err);
+        return [];
+      }
+    },
+    get: async (id: string): Promise<Product | undefined> => {
+      const list = await db.products.toArray();
+      return list.find(p => p.id === id);
+    },
+    add: async (product: Product): Promise<void> => {
+      await invoke<void>('add_product_rust', {
+        productJson: JSON.stringify(product)
+      });
+    },
+    update: async (id: string, _changes: Partial<Product>): Promise<void> => {
+      // Tidak melakukan apa-apa di frontend karena data stok diperbarui
+      // via transaksi native di Rust.
+      console.log(`Frontend DB: request update product ${id} ignored. Handled by Rust.`);
+      return;
+    }
+  },
+  
+  inventoryLogs: {
+    toArray: async (): Promise<InventoryLog[]> => {
+      try {
+        const res = await invoke<string>('get_inventory_logs_rust');
+        return JSON.parse(res);
+      } catch (err) {
+        console.error('Error fetching inventory logs from Rust SQLite:', err);
+        return [];
+      }
+    }
+  },
+  
+  fixedAssets: {
+    toArray: async (): Promise<FixedAsset[]> => {
+      try {
+        const res = await invoke<string>('get_fixed_assets_rust');
+        const list = JSON.parse(res);
+        return list.map((a: any) => ({
+          ...a,
+          isFullyDepreciated: a.isFullyDepreciated || false
+        }));
+      } catch (err) {
+        console.error('Error fetching fixed assets from Rust SQLite:', err);
+        return [];
+      }
+    },
+    get: async (id: string): Promise<FixedAsset | undefined> => {
+      const list = await db.fixedAssets.toArray();
+      return list.find(a => a.id === id);
+    },
+    add: async (asset: Omit<FixedAsset, 'accumulatedDepreciation' | 'isFullyDepreciated'> & { id: string }): Promise<void> => {
+      await invoke<string>('add_fixed_asset_rust', {
+        assetJson: JSON.stringify(asset)
+      });
+    },
+    put: async (asset: FixedAsset): Promise<void> => {
+      // Penyusutan bulanan ditangani secara native di Rust.
+      console.log(`Frontend DB: request put asset ${asset.id} ignored. Handled by Rust.`);
+      return;
+    }
+  },
+  
+  bankStatements: {
+    toArray: async (): Promise<BankStatementItem[]> => {
+      try {
+        const res = await invoke<string>('get_bank_statements_rust');
+        return JSON.parse(res);
+      } catch (err) {
+        console.error('Error fetching bank statements from Rust SQLite:', err);
+        return [];
+      }
+    },
+    update: async (id: string, _changes: Partial<BankStatementItem>): Promise<void> => {
+      // Ditangani via reconcile_bank_statement_rust.
+      console.log(`Frontend DB: request update bank statement ${id} ignored. Handled by Rust.`);
+      return;
+    }
+  },
+  
+  contacts: {
+    toArray: async (): Promise<Contact[]> => {
+      // Mengambil kontak jika perlu, dummy untuk demo
+      return [
+        { id: 'c-01', name: 'Umum / Tunai', type: 'CUSTOMER' },
+        { id: 'c-02', name: 'PT Sejahtera Mulia', type: 'CUSTOMER' },
+        { id: 'v-01', name: 'Supplier Kopi Indonesia', type: 'VENDOR' },
+        { id: 'v-02', name: 'PLN Persero', type: 'VENDOR' },
+      ];
+    }
   }
+};
+
+// Dummy Accounts agar tidak merusak import static DEFAULT_ACCOUNTS
+export const DEFAULT_ACCOUNTS: Account[] = [];
+
+// Fungsi inisialisasi dummy di frontend karena database diinisialisasi secara native di Rust
+export async function initializeDatabase() {
+  console.log('Database Akunta SQLite diinisialisasi secara native di backend Rust.');
 }

@@ -1,4 +1,3 @@
-import { db } from './db';
 import { invoke } from '@tauri-apps/api/core';
 
 export interface TaxTransaction {
@@ -11,7 +10,7 @@ export interface TaxTransaction {
 }
 
 /**
- * Menghitung ringkasan pajak secara NATIVE di Rust backend via Tauri.
+ * Menghitung ringkasan pajak secara NATIVE di Rust backend via SQLite.
  */
 export async function getTaxSummary(): Promise<{
   ppnMasukan: number;
@@ -21,23 +20,16 @@ export async function getTaxSummary(): Promise<{
   transactions: TaxTransaction[];
 }> {
   try {
-    const journals = await db.journals.toArray();
-    
-    // Panggil analisis pajak di Rust native
-    const summaryJson = await invoke<string>('process_tax_rust', {
-      journalsJson: JSON.stringify(journals)
-    });
-
+    const summaryJson = await invoke<string>('process_tax_rust');
     return JSON.parse(summaryJson);
   } catch (err: any) {
     console.error('Error processing tax in Rust:', err);
-    // Fallback jika tauri tidak tersedia
     return { ppnMasukan: 0, ppnKeluaran: 0, pph21: 0, pph23: 0, transactions: [] };
   }
 }
 
 /**
- * Menghasilkan data e-Faktur CSV Simulator secara NATIVE di Rust
+ * Menghasilkan data e-Faktur CSV Simulator secara NATIVE di Rust (dengan tanggal valid DD/MM/YYYY)
  */
 export async function generateEFakturCSV(transactions: TaxTransaction[], type: 'MASUKAN' | 'KELUARAN'): Promise<string> {
   try {
@@ -53,15 +45,48 @@ export async function generateEFakturCSV(transactions: TaxTransaction[], type: '
 }
 
 /**
- * Menghasilkan data e-Bupot CSV Simulator secara NATIVE di Rust
+ * Menghasilkan data e-Bupot CSV Simulator secara NATIVE di Rust (dengan tanggal valid DD/MM/YYYY)
  */
-export async function generateEBupotCSV(transactions: TaxTransaction[]): Promise<string> {
+export async function generateEBupotCSV(transactions: TaxTransaction[], taxType: 'PPH_21' | 'PPH_23' = 'PPH_21'): Promise<string> {
   try {
     return await invoke<string>('generate_ebupot_csv_rust', {
-      transactionsJson: JSON.stringify(transactions)
+      transactionsJson: JSON.stringify(transactions),
+      taxType
     });
   } catch (err: any) {
     console.error('Error generating eBupot CSV in Rust:', err);
     return '';
+  }
+}
+
+export interface ReconciliationResult {
+  matched: boolean;
+  matchedJournalId?: string;
+  confidenceScore: number;
+  suggestedLines?: { accountCode: string; debit: number; credit: number }[];
+  suggestedDescription?: string;
+}
+
+/**
+ * Merekonstruksi kecocokan mutasi bank secara native di Rust SQLite.
+ */
+export async function reconcileBankStatement(
+  _journals: any[], // Dibiarkan sebagai parameter untuk kompatibilitas signature
+  date: string,
+  description: string,
+  amount: number,
+  statementId: string // Menambahkan parameter ID agar Rust tahu entri mana yang diperbarui
+): Promise<ReconciliationResult> {
+  try {
+    const resultJson = await invoke<string>('reconcile_bank_statement_rust', {
+      statementId,
+      date,
+      description,
+      amount
+    });
+    return JSON.parse(resultJson);
+  } catch (err: any) {
+    console.error('Gagal rekonsiliasi di Rust SQLite:', err);
+    throw new Error(err.message || err);
   }
 }

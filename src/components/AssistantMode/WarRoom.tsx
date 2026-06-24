@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
+import { listen } from '@tauri-apps/api/event';
 import { TrendingUp, Wallet, AlertTriangle, Info, BellRing } from 'lucide-react';
 import { db } from '../../utils/db';
 import { getAccountBalances, generateProfitLoss } from '../../utils/ledgerEngine';
@@ -10,8 +10,34 @@ export const WarRoom: React.FC = () => {
   const [totalBankBalance, setTotalBankBalance] = useState(0);
   const [netProfit, setNetProfit] = useState(0);
 
-  // Reaktif terhadap perubahan database jurnal
-  const journals = useLiveQuery(() => db.journals.toArray()) || [];
+  // Reaktif terhadap perubahan database jurnal via React State
+  const [journals, setJournals] = useState<any[]>([]);
+
+  const fetchJournals = async () => {
+    const list = await db.journals.toArray();
+    setJournals(list);
+  };
+
+  useEffect(() => {
+    let active = true;
+    let unlistenFn: (() => void) | undefined;
+
+    const setupListener = async () => {
+      unlistenFn = await listen('db-update', () => {
+        if (active) {
+          fetchJournals();
+        }
+      });
+    };
+
+    fetchJournals();
+    setupListener();
+
+    return () => {
+      active = false;
+      if (unlistenFn) unlistenFn();
+    };
+  }, []);
 
   useEffect(() => {
     const calculateDashboardStats = async () => {
@@ -44,7 +70,9 @@ export const WarRoom: React.FC = () => {
       setNetProfit(pl.netProfit);
     };
 
-    calculateDashboardStats();
+    if (journals.length > 0) {
+      calculateDashboardStats();
+    }
   }, [journals]);
 
   // Evaluasi notifikasi berdasarkan data real-time

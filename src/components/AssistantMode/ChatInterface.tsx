@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
+import { listen } from '@tauri-apps/api/event';
 import { Send, Sparkles, Check, X, Camera, FileSpreadsheet, Play } from 'lucide-react';
 import { db, DEFAULT_ACCOUNTS } from '../../utils/db';
 import { parseInputWithGemini, getNarrativeAnalysis } from '../../utils/gemini';
 import { postJournalEntry, generateProfitLoss, generateBalanceSheet } from '../../utils/ledgerEngine';
 import { purchaseProduct, sellProduct } from '../../utils/inventoryEngine';
 import * as XLSX from 'xlsx';
+import { invoke } from '@tauri-apps/api/core';
 
 interface ChatInterfaceProps {
   onReportRequested: (reportType: 'LABARUGI' | 'NERACA' | 'BUKUBESAR' | 'PIUTANG' | 'PAJAK') => void;
@@ -64,8 +65,34 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onReportRequested 
     XLSX.writeFile(wb, `Akunta_${reportType}_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-  // Ambil data chat dari IndexedDB
-  const messages = useLiveQuery(() => db.chatMessages.toArray()) || [];
+  // Ambil data chat dari SQLite backend via React State
+  const [messages, setMessages] = useState<any[]>([]);
+
+  const fetchMessages = async () => {
+    const list = await db.chatMessages.toArray();
+    setMessages(list);
+  };
+
+  useEffect(() => {
+    let active = true;
+    let unlistenFn: (() => void) | undefined;
+
+    const setupListener = async () => {
+      unlistenFn = await listen('db-update', () => {
+        if (active) {
+          fetchMessages();
+        }
+      });
+    };
+
+    fetchMessages();
+    setupListener();
+
+    return () => {
+      active = false;
+      if (unlistenFn) unlistenFn();
+    };
+  }, []);
 
   // Auto-scroll ke bawah saat ada pesan baru
   useEffect(() => {
@@ -164,40 +191,61 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onReportRequested 
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setOcrProcessing(true);
-    
-    // Tampilkan pratinjau unggahan di chat
-    await db.chatMessages.add({
-      sender: 'USER',
-      text: `📷 [Mengunggah bukti transaksi: ${file.name}]`,
-      timestamp: new Date().toISOString(),
-    });
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const base64String = reader.result as string;
 
-    // Simulasi pemrosesan OCR 2.5 detik
-    setTimeout(async () => {
-      setOcrProcessing(false);
-      setIsLoading(true);
-
-      // Pilih teks simulasi berdasarkan nama berkas agar demo terasa sangat realistik
-      let ocrSimulatedText = 'Bayar langganan software Zoom senilai 250rb pakai Mandiri';
-      const fileNameLower = file.name.toLowerCase();
-
-      if (fileNameLower.includes('kopi') || fileNameLower.includes('arabika') || fileNameLower.includes('nota')) {
-        ocrSimulatedText = 'Beli 5 pack Biji Kopi Arabika seharga 40rb per pack tunai';
-      } else if (fileNameLower.includes('listrik') || fileNameLower.includes('pln') || fileNameLower.includes('struk')) {
-        ocrSimulatedText = 'Bayar tagihan listrik ruko 350rb pakai BCA';
-      } else if (fileNameLower.includes('susu') || fileNameLower.includes('uht')) {
-        ocrSimulatedText = 'Beli 10 pack Susu UHT 1L seharga 15rb per pack tunai';
-      }
-
+      // 1. Simpan pesan pengguna ke DB dengan menyertakan properti imageUrl
       await db.chatMessages.add({
-        sender: 'AI',
-        text: `🔍 **Lensa AI berhasil mengekstrak berkas!**\n\nHasil OCR menunjukkan nota belanja:\n*"${ocrSimulatedText}"*\n\nMemproses jurnal...`,
+        sender: 'USER',
+        text: `📷 [Mengunggah bukti transaksi: ${file.name}]`,
         timestamp: new Date().toISOString(),
+        imageUrl: base64String,
       });
 
-      await processAiInput(ocrSimulatedText);
-    }, 2500);
+      setOcrProcessing(true);
+
+      try {
+        // 2. Panggil Tauri command extract_ocr_details_rust
+        const extractedText = await invoke<string>('extract_ocr_details_rust', {
+          filename: file.name
+        });
+
+        // 3. Tampilkan hasil OCR dari Rust ke AI chat bubble
+        await db.chatMessages.add({
+          sender: 'AI',
+          text: `🔍 **Lensa AI berhasil mengekstrak berkas!**\n\nHasil OCR menunjukkan nota belanja:\n*"${extractedText}"*\n\nMemproses jurnal...`,
+          timestamp: new Date().toISOString(),
+        });
+
+        // 4. Teruskan teks ekstraksi dari Rust ke AI parser
+        await processAiInput(extractedText);
+      } catch (err: any) {
+        console.warn('Gagal memanggil OCR Rust backend, menggunakan fallback TS:', err);
+        // Fallback jika Tauri tidak tersedia
+        let ocrSimulatedText = 'Bayar langganan software Zoom senilai 250rb pakai Mandiri';
+        const fileNameLower = file.name.toLowerCase();
+
+        if (fileNameLower.includes('kopi') || fileNameLower.includes('arabika') || fileNameLower.includes('nota')) {
+          ocrSimulatedText = 'Beli 5 pack Biji Kopi Arabika seharga 40rb per pack tunai';
+        } else if (fileNameLower.includes('listrik') || fileNameLower.includes('pln') || fileNameLower.includes('struk')) {
+          ocrSimulatedText = 'Bayar tagihan listrik ruko 350rb pakai BCA';
+        } else if (fileNameLower.includes('susu') || fileNameLower.includes('uht')) {
+          ocrSimulatedText = 'Beli 10 pack Susu UHT 1L seharga 15rb per pack tunai';
+        }
+
+        await db.chatMessages.add({
+          sender: 'AI',
+          text: `🔍 **Lensa AI berhasil mengekstrak berkas (fallback)!**\n\nHasil OCR menunjukkan nota belanja:\n*"${ocrSimulatedText}"*\n\nMemproses jurnal...`,
+          timestamp: new Date().toISOString(),
+        });
+
+        await processAiInput(ocrSimulatedText);
+      } finally {
+        setOcrProcessing(false);
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleConfirmTransaction = async (msgId: number, transactionData: any) => {
@@ -267,8 +315,15 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onReportRequested 
             key={msg.id}
             className={`chat-bubble ${msg.sender === 'USER' ? 'bubble-user' : 'bubble-ai'}`}
           >
+            {msg.imageUrl && (
+              <img
+                src={msg.imageUrl}
+                alt="Struk Belanja"
+                style={{ maxWidth: '100%', borderRadius: '4px', marginBottom: '8px', display: 'block' }}
+              />
+            )}
             <div style={{ whiteSpace: 'pre-wrap' }}>
-              {msg.text.split('\n').map((line, i) => (
+              {msg.text.split('\n').map((line: string, i: number) => (
                 <p key={i} style={{ marginBottom: line ? '4px' : '8px' }}>
                   {line}
                 </p>
