@@ -843,6 +843,16 @@ body {
   border-color: var(--border-focus);
 }
 
+/* Menyembunyikan spinner arrow (panah atas-bawah) pada input type="number" */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
 /* Memperbaiki dropdown select & option pada WebKitGTK/Linux agar teks tidak hitam di atas hitam */
 select {
   color: #ffffff !important;
