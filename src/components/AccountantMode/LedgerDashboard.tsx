@@ -15,10 +15,9 @@ import * as XLSX from 'xlsx';
 
 interface LedgerDashboardProps {
   activeTab: 'JURNAL' | 'BUKUBESAR' | 'LABARUGI' | 'NERACA' | 'PAJAK' | 'PERSEDIAAN';
-  setActiveTab: (tab: 'JURNAL' | 'BUKUBESAR' | 'LABARUGI' | 'NERACA' | 'PAJAK' | 'PERSEDIAAN') => void;
 }
 
-export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab, setActiveTab }) => {
+export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) => {
   // Database Hooks
   const journals = useLiveQuery(() => db.journals.orderBy('date').reverse().toArray()) || [];
   const accounts = useLiveQuery(() => db.accounts.toArray()) || [];
@@ -292,29 +291,6 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab, set
 
   return (
     <div className="accountant-workspace">
-      
-      {/* Tab Navigation */}
-      <div className="tab-nav">
-        <button className={`tab-btn ${activeTab === 'JURNAL' ? 'active' : ''}`} onClick={() => setActiveTab('JURNAL')}>
-          Jurnal Umum
-        </button>
-        <button className={`tab-btn ${activeTab === 'BUKUBESAR' ? 'active' : ''}`} onClick={() => setActiveTab('BUKUBESAR')}>
-          Daftar Akun (COA)
-        </button>
-        <button className={`tab-btn ${activeTab === 'PERSEDIAAN' ? 'active' : ''}`} onClick={() => setActiveTab('PERSEDIAAN')}>
-          Persediaan
-        </button>
-        <button className={`tab-btn ${activeTab === 'LABARUGI' ? 'active' : ''}`} onClick={() => setActiveTab('LABARUGI')}>
-          Laba Rugi
-        </button>
-        <button className={`tab-btn ${activeTab === 'NERACA' ? 'active' : ''}`} onClick={() => setActiveTab('NERACA')}>
-          Neraca
-        </button>
-        <button className={`tab-btn ${activeTab === 'PAJAK' ? 'active' : ''}`} onClick={() => setActiveTab('PAJAK')}>
-          Bank & Pajak
-        </button>
-      </div>
-
       {/* Main Content Area */}
       <div className="report-content">
         

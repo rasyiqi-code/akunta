@@ -1,16 +1,22 @@
 import { useState, useEffect } from 'react';
-import { Sparkles, BarChart2, Sun, Moon } from 'lucide-react';
+import { 
+  Sparkles, BookOpen, List, FileText, Layers, 
+  Settings, Sun, Moon, ChevronRight, Sidebar
+} from 'lucide-react';
 import { initializeDatabase } from './utils/db';
 import { WarRoom } from './components/AssistantMode/WarRoom';
 import { ChatInterface } from './components/AssistantMode/ChatInterface';
 import { LedgerDashboard } from './components/AccountantMode/LedgerDashboard';
 
+type ModuleTab = 'JURNAL' | 'BUKUBESAR' | 'PERSEDIAAN' | 'LABARUGI' | 'NERACA' | 'PAJAK';
+
 function App() {
-  const [activeTab, setActiveTab] = useState<'JURNAL' | 'BUKUBESAR' | 'LABARUGI' | 'NERACA' | 'PAJAK' | 'PERSEDIAAN'>('JURNAL');
+  const [activeTab, setActiveTab] = useState<ModuleTab>('JURNAL');
   const [isLightMode, setIsLightMode] = useState(false);
   const [isDbReady, setIsDbReady] = useState(false);
+  const [showPreviewPane, setShowPreviewPane] = useState(true);
 
-  // Inisialisasi Database Lokal pada saat mount
+  // Inisialisasi Database
   useEffect(() => {
     const init = async () => {
       try {
@@ -23,7 +29,7 @@ function App() {
     init();
   }, []);
 
-  // Ubah Tema Aplikasi (Dark/Light)
+  // Toggle Tema
   const toggleTheme = () => {
     const nextTheme = !isLightMode;
     setIsLightMode(nextTheme);
@@ -31,6 +37,19 @@ function App() {
       document.documentElement.classList.add('light-theme');
     } else {
       document.documentElement.classList.remove('light-theme');
+    }
+  };
+
+  // Label Breadcrumbs berdasarkan tab aktif
+  const getTabLabel = (tab: ModuleTab) => {
+    switch(tab) {
+      case 'JURNAL': return 'Jurnal Umum';
+      case 'BUKUBESAR': return 'Daftar Akun (COA)';
+      case 'PERSEDIAAN': return 'Persediaan';
+      case 'LABARUGI': return 'Laporan Laba Rugi';
+      case 'NERACA': return 'Laporan Neraca';
+      case 'PAJAK': return 'Bank & Perpajakan';
+      default: return 'Modul';
     }
   };
 
@@ -47,32 +66,32 @@ function App() {
         fontFamily: 'sans-serif'
       }}>
         <div style={{
-          width: '32px',
-          height: '32px',
-          border: '3px solid rgba(255, 255, 255, 0.1)',
-          borderTopColor: '#6366f1',
+          width: '24px',
+          height: '24px',
+          border: '2px solid rgba(255, 255, 255, 0.1)',
+          borderTopColor: '#4f46e5',
           borderRadius: '50%',
           animation: 'spin 1s linear infinite',
-          marginBottom: '16px'
+          marginBottom: '12px'
         }}></div>
-        <h3>Menginisialisasi Akunta Ledger...</h3>
+        <h4 style={{ fontSize: '12px' }}>Menginisialisasi Akunta Ledger...</h4>
       </div>
     );
   }
 
   return (
     <div className="app-container">
-      {/* Header Utama */}
+      {/* Header Utama (Sangat Ramping) */}
       <header className="app-header">
         <div className="logo-section">
           <div className="logo-icon">A</div>
           <span className="logo-text">AKUNTA</span>
-          <span className="logo-tag">Desktop MVP</span>
+          <span className="logo-tag">Windows Layout</span>
         </div>
 
         <div className="header-actions">
-          <button className="btn btn-secondary btn-circle" onClick={toggleTheme} title="Ganti Tema">
-            {isLightMode ? <Moon size={16} /> : <Sun size={16} />}
+          <button className="btn btn-secondary btn-circle" style={{ width: '24px', height: '24px' }} onClick={toggleTheme} title="Ganti Tema">
+            {isLightMode ? <Moon size={13} /> : <Sun size={13} />}
           </button>
         </div>
       </header>
@@ -80,21 +99,110 @@ function App() {
       {/* Split Workspace */}
       <div className="workspace-container">
         
-        {/* Panel Kiri: Mode Asisten (Dashboard War Room + Chat) */}
-        <div className="split-panel panel-assistant" style={{ flex: '0 0 45%', minWidth: '400px' }}>
-          <div className="panel-header">
+        {/* PANEL KIRI: Navigation Pane (Windows Explorer Style) */}
+        <aside className="sidebar-pane">
+          <div>
+            <div className="sidebar-section-title">Navigasi Utama</div>
+            <nav className="sidebar-menu">
+              <div 
+                className={`sidebar-item ${activeTab === 'JURNAL' ? 'active' : ''}`}
+                onClick={() => setActiveTab('JURNAL')}
+              >
+                <BookOpen size={13} />
+                <span>Jurnal Umum</span>
+              </div>
+              
+              <div 
+                className={`sidebar-item ${activeTab === 'BUKUBESAR' ? 'active' : ''}`}
+                onClick={() => setActiveTab('BUKUBESAR')}
+              >
+                <List size={13} />
+                <span>Daftar Akun (COA)</span>
+              </div>
+
+              <div 
+                className={`sidebar-item ${activeTab === 'PERSEDIAAN' ? 'active' : ''}`}
+                onClick={() => setActiveTab('PERSEDIAAN')}
+              >
+                <Layers size={13} />
+                <span>Persediaan</span>
+              </div>
+            </nav>
+
+            <div className="sidebar-section-title" style={{ marginTop: '12px' }}>Laporan Keuangan</div>
+            <nav className="sidebar-menu">
+              <div 
+                className={`sidebar-item ${activeTab === 'LABARUGI' ? 'active' : ''}`}
+                onClick={() => setActiveTab('LABARUGI')}
+              >
+                <FileText size={13} />
+                <span>Laba Rugi</span>
+              </div>
+
+              <div 
+                className={`sidebar-item ${activeTab === 'NERACA' ? 'active' : ''}`}
+                onClick={() => setActiveTab('NERACA')}
+              >
+                <FileText size={13} />
+                <span>Neraca</span>
+              </div>
+
+              <div 
+                className={`sidebar-item ${activeTab === 'PAJAK' ? 'active' : ''}`}
+                onClick={() => setActiveTab('PAJAK')}
+              >
+                <Settings size={13} />
+                <span>Bank & Pajak</span>
+              </div>
+            </nav>
+          </div>
+
+          <div style={{ padding: '0 12px 6px 12px', fontSize: '9.5px', color: 'var(--text-muted)' }}>
+            System Offline-First
+          </div>
+        </aside>
+
+        {/* PANEL TENGAH: Content Pane (Tabel & Grid Laporan) */}
+        <main className="main-content-pane">
+          {/* Command Bar (Breadcrumbs & Toggle Pane) */}
+          <div className="command-bar">
+            <div className="breadcrumbs">
+              <span>Akunta</span>
+              <span className="separator"><ChevronRight size={10} /></span>
+              <span className="active-path">{getTabLabel(activeTab)}</span>
+            </div>
+            
+            <div className="command-actions">
+              <button 
+                className={`btn ${showPreviewPane ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ padding: '3px 8px' }}
+                onClick={() => setShowPreviewPane(!showPreviewPane)}
+                title="Toggle Asisten AI (Preview Pane)"
+              >
+                <Sidebar size={12} />
+                <span>{showPreviewPane ? 'Sembunyikan AI' : 'Tampilkan AI'}</span>
+              </button>
+            </div>
+          </div>
+
+          <LedgerDashboard activeTab={activeTab} />
+        </main>
+
+        {/* PANEL KANAN: Preview Pane (Asisten AI - War Room & Chat) */}
+        <aside className={`preview-assistant-pane ${showPreviewPane ? '' : 'collapsed'}`}>
+          <div className="panel-header" style={{ background: 'transparent' }}>
             <div className="panel-title">
-              <Sparkles size={16} style={{ color: 'var(--accent-primary)' }} />
-              <span>💬 Mode Asisten (AI Naratif)</span>
+              <Sparkles size={12} style={{ color: 'var(--accent-primary)' }} />
+              <span>Preview Pane: Asisten AI</span>
             </div>
           </div>
           
           <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-            {/* Setengah Atas: War Room (Dashboard) */}
+            {/* Bagian Atas: War Room (Dashboard Ringkas) */}
             <div style={{ flex: '0 0 45%', overflowY: 'auto', borderBottom: '1px solid var(--border-color)' }}>
               <WarRoom />
             </div>
-            {/* Setengah Bawah: Chat Interface */}
+            {/* Bagian Bawah: Chat Interface */}
             <div style={{ flex: '0 0 55%', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
               <ChatInterface onReportRequested={(report) => {
                 if (report === 'PIUTANG') {
@@ -105,19 +213,7 @@ function App() {
               }} />
             </div>
           </div>
-        </div>
-
-        {/* Panel Kanan: Mode Akuntan (Tabel Grid & Laporan Keuangan) */}
-        <div className="split-panel panel-accountant">
-          <div className="panel-header">
-            <div className="panel-title">
-              <BarChart2 size={16} style={{ color: 'var(--accent-secondary)' }} />
-              <span>🔧 Mode Akuntan (Ledger & Audit)</span>
-            </div>
-          </div>
-          
-          <LedgerDashboard activeTab={activeTab} setActiveTab={setActiveTab} />
-        </div>
+        </aside>
 
       </div>
     </div>
