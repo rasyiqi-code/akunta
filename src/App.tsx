@@ -80,7 +80,13 @@ function App() {
           <div>
             {/* Logo Section disatukan ke Sidebar Kiri */}
             <div className="logo-section">
-              <div className="logo-icon">A</div>
+              <div className="logo-icon">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ color: 'white' }}>
+                  <path d="M10 2C5 5 5 19 10 22C5 17 5 7 10 2Z" fill="currentColor" />
+                  <path d="M14 2C19 5 19 19 14 22C19 17 19 7 14 2Z" fill="currentColor" opacity="0.75" />
+                  <circle cx="12" cy="12" r="2" fill="currentColor" />
+                </svg>
+              </div>
               <span className="logo-text">AKUNTA</span>
               <span className="logo-tag">Desktop</span>
             </div>
