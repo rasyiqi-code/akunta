@@ -91,11 +91,11 @@ function App() {
           
           <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
             {/* Setengah Atas: War Room (Dashboard) */}
-            <div style={{ flex: '1 1 50%', overflowY: 'auto', borderBottom: '1px solid var(--border-color)' }}>
+            <div style={{ flex: '0 0 45%', overflowY: 'auto', borderBottom: '1px solid var(--border-color)' }}>
               <WarRoom />
             </div>
             {/* Setengah Bawah: Chat Interface */}
-            <div style={{ flex: '1 1 50%', overflow: 'hidden' }}>
+            <div style={{ flex: '0 0 55%', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
               <ChatInterface onReportRequested={(report) => {
                 if (report === 'PIUTANG') {
                   setActiveTab('PAJAK');
