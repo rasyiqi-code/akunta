@@ -64,7 +64,7 @@ pub fn add_product_rust(
 #[tauri::command]
 pub fn get_inventory_logs_rust(state: State<DbState>) -> Result<String, String> {
     let conn = state.0.lock().unwrap();
-    let mut stmt = conn.prepare("SELECT id, product_id, date, type, qty, cost, reference FROM inventory_logs ORDER BY date DESC, id DESC").map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare("SELECT id, product_id, date, type, qty, cost, reference, warehouse_id FROM inventory_logs ORDER BY date DESC, id DESC").map_err(|e| e.to_string())?;
     
     let iter = stmt.query_map([], |row| {
         Ok(InventoryLog {
@@ -75,6 +75,7 @@ pub fn get_inventory_logs_rust(state: State<DbState>) -> Result<String, String> 
             qty: row.get(4)?,
             cost: row.get(5)?,
             reference: row.get(6)?,
+            warehouse_id: row.get(7)?,
         })
     }).map_err(|e| e.to_string())?;
     
@@ -133,7 +134,7 @@ pub fn purchase_product_rust(
     // Catat log inventaris
     let log_id = format!("ILG-{}", rand_id());
     tx.execute(
-        "INSERT INTO inventory_logs (id, product_id, date, type, qty, cost, reference) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        "INSERT INTO inventory_logs (id, product_id, date, type, qty, cost, reference, warehouse_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'w-01')",
         rusqlite::params![log_id, product_id, date, "MASUK", qty, unit_cost, ref_journal_id],
     ).map_err(|e| e.to_string())?;
     
@@ -197,7 +198,7 @@ pub fn sell_product_rust(
     // Catat log inventaris
     let log_id = format!("ILG-{}", rand_id());
     tx.execute(
-        "INSERT INTO inventory_logs (id, product_id, date, type, qty, cost, reference) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        "INSERT INTO inventory_logs (id, product_id, date, type, qty, cost, reference, warehouse_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'w-01')",
         rusqlite::params![log_id, product_id, date, "KELUAR", qty, hpp_per_unit, ref_journal_id],
     ).map_err(|e| e.to_string())?;
     
@@ -278,8 +279,8 @@ pub fn adjust_product_stock_rust(
     // Catat log inventaris
     let log_id = format!("ILG-{}", rand_id());
     tx.execute(
-        "INSERT INTO inventory_logs (id, product_id, date, type, qty, cost, reference) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-        rusqlite::params![log_id, product_id, date, "ADJUSTMENT", abs_qty, product.average_cost, reason],
+        "INSERT INTO inventory_logs (id, product_id, date, type, qty, cost, reference, warehouse_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'w-01')",
+        rusqlite::params![log_id, product_id, date, "ADJUSTMENT", diff, product.average_cost, reason],
     ).map_err(|e| e.to_string())?;
     
     // Jurnal Penyesuaian GL

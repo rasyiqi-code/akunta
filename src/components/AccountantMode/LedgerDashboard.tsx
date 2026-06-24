@@ -316,24 +316,14 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
       const matchResult = await reconcileBankStatement(journals, statementDate, statementDesc, amount, stmtId);
 
       if (matchResult.matched && matchResult.matchedJournalId) {
-        await db.bankStatements.update(stmtId, { 
-          matchedJournalId: matchResult.matchedJournalId, 
-          confidenceScore: matchResult.confidenceScore 
-        });
-        const matchedJrn = journals.find(j => j.id === matchResult.matchedJournalId);
-        alert(`Berhasil merekonsiliasi dengan Jurnal: ${matchedJrn?.description || matchResult.matchedJournalId} (Skor AI: ${matchResult.confidenceScore}%)`);
-      } else if (matchResult.suggestedLines && matchResult.suggestedDescription) {
-        const newJrnId = await postJournalEntry({
-          date: statementDate,
-          description: matchResult.suggestedDescription,
-          lines: matchResult.suggestedLines
-        });
-
-        await db.bankStatements.update(stmtId, { 
-          matchedJournalId: newJrnId, 
-          confidenceScore: matchResult.confidenceScore 
-        });
-        alert(`Jurnal penyesuaian otomatis dibuat oleh Rust: ID ${newJrnId} (Skor AI: ${matchResult.confidenceScore}%)`);
+        alert(`Berhasil merekonsiliasi dengan Jurnal: ${matchResult.matchedJournalId} (Skor AI: ${matchResult.confidenceScore}%)`);
+        
+        // Picu pembaruan data secara langsung
+        const event = new CustomEvent('db-update');
+        window.dispatchEvent(event);
+        fetchData();
+      } else {
+        alert('Tidak ditemukan kecocokan transaksi bank.');
       }
     } catch (err: any) {
       alert(`Gagal rekonsiliasi: ${err.message}`);
@@ -855,9 +845,29 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
                     </thead>
                     <tbody>
                       {products.map(p => {
-                        // Simulasi split 80-20 offline-first untuk demo sebaran gudang yang realistis
-                        const mainQty = Math.round(p.stockQty * 0.8 * 10) / 10;
-                        const transitQty = Math.round((p.stockQty - mainQty) * 10) / 10;
+                        // Hitung stok riil dari log inventaris untuk masing-masing gudang
+                        const getStockByWarehouse = (productId: string, warehouseId: string) => {
+                          return inventoryLogs
+                            .filter(log => log.productId === productId && log.warehouseId === warehouseId)
+                            .reduce((total, log) => {
+                              if (log.type === 'MASUK') {
+                                return total + log.qty;
+                              } else if (log.type === 'KELUAR') {
+                                return total - log.qty;
+                              } else if (log.type === 'ADJUSTMENT') {
+                                return total + log.qty;
+                              }
+                              return total;
+                            }, 0);
+                        };
+
+                        const calcMainQty = getStockByWarehouse(p.id, 'w-01');
+                        const calcTransitQty = getStockByWarehouse(p.id, 'w-02');
+                        // Fallback jika tidak ada log mutasi tetapi produk memiliki data stok di tabel produk
+                        const totalCalc = calcMainQty + calcTransitQty;
+                        const mainQty = totalCalc === 0 && p.stockQty > 0 ? p.stockQty : calcMainQty;
+                        const transitQty = calcTransitQty;
+
                         return (
                           <tr key={p.id}>
                             <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{p.sku}</td>

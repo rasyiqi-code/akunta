@@ -449,7 +449,7 @@ pub fn create_stock_take(conn: &Connection, order: StockTakeOrder) -> Result<Str
                 let log_id = format!("LOG-ADJ-{}", order.id);
                 conn.execute(
                     "INSERT INTO inventory_logs (id, product_id, date, type, qty, cost, reference, warehouse_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'w-01')",
-                    params![log_id, item.product_id, order.date, log_type, item.diff_qty.abs(), item.cost, order.id],
+                    params![log_id, item.product_id, order.date, log_type, item.diff_qty, item.cost, order.id],
                 ).map_err(|e| e.to_string())?;
             }
         }

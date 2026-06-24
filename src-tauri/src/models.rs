@@ -205,6 +205,8 @@ pub struct InventoryLog {
     pub qty: f64,
     pub cost: f64,
     pub reference: Option<String>,
+    #[serde(rename = "warehouseId")]
+    pub warehouse_id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]

@@ -313,7 +313,7 @@ pub fn seed_default_data(conn: &Connection) -> std::result::Result<(), String> {
                 "prod-01",
                 "Biji Kopi Arabika",
                 "KOPI-ARB",
-                10.0,
+                12.0,
                 40000.0,
                 60000.0,
             ),
@@ -343,6 +343,7 @@ pub fn seed_default_data(conn: &Connection) -> std::result::Result<(), String> {
                 10.0,
                 40000.0,
                 "INIT",
+                "w-01",
             ),
             (
                 "log-02",
@@ -352,13 +353,24 @@ pub fn seed_default_data(conn: &Connection) -> std::result::Result<(), String> {
                 20.0,
                 15000.0,
                 "INIT",
+                "w-01",
+            ),
+            (
+                "log-03",
+                "prod-01",
+                "2026-06-21",
+                "MASUK",
+                2.0,
+                40000.0,
+                "INIT",
+                "w-02",
             ),
         ];
 
         for l in default_logs {
             conn.execute(
-                "INSERT INTO inventory_logs (id, product_id, date, type, qty, cost, reference) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-                rusqlite::params![l.0, l.1, l.2, l.3, l.4, l.5, l.6],
+                "INSERT INTO inventory_logs (id, product_id, date, type, qty, cost, reference, warehouse_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                rusqlite::params![l.0, l.1, l.2, l.3, l.4, l.5, l.6, l.7],
             ).map_err(|e| format!("Gagal memasukkan log inventaris default {}: {}", l.0, e))?;
         }
     }

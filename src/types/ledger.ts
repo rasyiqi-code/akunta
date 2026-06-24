@@ -70,6 +70,7 @@ export interface InventoryLog {
   qty: number;
   cost: number;
   reference?: string; // Menyimpan Ref ID Jurnal terkait
+  warehouseId?: string;
 }
 
 export interface FixedAsset {

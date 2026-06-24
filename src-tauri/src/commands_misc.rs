@@ -286,7 +286,7 @@ pub fn export_backup_json_rust(state: State<DbState>) -> Result<String, String> 
     }).unwrap().map(|r| r.unwrap()).collect();
     
     // 6. Ambil inventory logs
-    let mut stmt = conn.prepare("SELECT id, product_id, date, type, qty, cost, reference FROM inventory_logs").unwrap();
+    let mut stmt = conn.prepare("SELECT id, product_id, date, type, qty, cost, reference, warehouse_id FROM inventory_logs").unwrap();
     let inventory_logs: Vec<InventoryLog> = stmt.query_map([], |row| {
         Ok(InventoryLog {
             id: row.get(0)?,
@@ -296,6 +296,7 @@ pub fn export_backup_json_rust(state: State<DbState>) -> Result<String, String> 
             qty: row.get(4)?,
             cost: row.get(5)?,
             reference: row.get(6)?,
+            warehouse_id: row.get(7)?,
         })
     }).unwrap().map(|r| r.unwrap()).collect();
     
@@ -448,7 +449,7 @@ pub fn import_backup_json_rust(
     if let Some(arr) = data["inventoryLogs"].as_array() {
         for val in arr {
             tx.execute(
-                "INSERT INTO inventory_logs (id, product_id, date, type, qty, cost, reference) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                "INSERT INTO inventory_logs (id, product_id, date, type, qty, cost, reference, warehouse_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 rusqlite::params![
                     val["id"].as_str().unwrap(),
                     val["productId"].as_str().unwrap(),
@@ -456,7 +457,8 @@ pub fn import_backup_json_rust(
                     val["type"].as_str().unwrap(),
                     val["qty"].as_f64().unwrap(),
                     val["cost"].as_f64().unwrap(),
-                    val["reference"].as_str()
+                    val["reference"].as_str(),
+                    val["warehouseId"].as_str().unwrap_or("w-01")
                 ]
             ).unwrap();
         }

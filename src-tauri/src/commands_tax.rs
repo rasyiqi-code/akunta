@@ -331,8 +331,8 @@ pub fn reconcile_bank_statement_rust(
         let _ = app_handle.emit("db-update", "bank_statements");
         
         let result = ReconciliationResult {
-            matched: false,
-            matched_journal_id: None,
+            matched: true,
+            matched_journal_id: Some(new_jrn_id),
             confidence_score: 85.0,
             suggested_lines: Some(lines),
             suggested_description: Some(suggested_desc),
