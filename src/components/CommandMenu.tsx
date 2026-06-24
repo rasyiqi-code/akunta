@@ -172,7 +172,7 @@ export const CommandMenu: React.FC<CommandMenuProps> = ({ activeTab, setActiveTa
       left: 0,
       right: 0,
       bottom: 0,
-      background: 'rgba(5, 5, 8, 0.75)',
+      background: 'var(--bg-overlay)',
       backdropFilter: 'blur(8px)',
       display: 'flex',
       alignItems: 'start',
@@ -185,10 +185,10 @@ export const CommandMenu: React.FC<CommandMenuProps> = ({ activeTab, setActiveTa
         ref={modalRef}
         style={{
           width: '520px',
-          background: 'rgba(20, 21, 30, 0.9)',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
+          background: 'var(--bg-modal)',
+          border: '1px solid var(--border-modal)',
           borderRadius: '10px',
-          boxShadow: '0 20px 40px rgba(0, 0, 0, 0.5)',
+          boxShadow: 'var(--shadow-modal)',
           overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column'

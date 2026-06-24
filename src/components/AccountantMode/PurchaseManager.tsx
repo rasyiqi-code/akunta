@@ -425,7 +425,7 @@ export const PurchaseManager: React.FC = () => {
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px' }}>
-              <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '700', color: 'white', letterSpacing: '-0.2px' }}>Buat Dokumen Pembelian Baru</h3>
+              <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)', letterSpacing: '-0.2px' }}>Buat Dokumen Pembelian Baru</h3>
               <button 
                 onClick={() => setShowModal(false)} 
                 style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: '18px', display: 'flex', alignItems: 'center' }}
@@ -446,7 +446,7 @@ export const PurchaseManager: React.FC = () => {
                     value={docType} 
                     onChange={(e: any) => setDocType(e.target.value)}
                     className="focus-glow"
-                    style={{ width: '100%', background: '#12131a', border: '1px solid rgba(255,255,255,0.08)', padding: '8px', borderRadius: '6px', color: 'white', fontSize: '12px' }}
+                    style={{ width: '100%', background: 'var(--bg-input)', border: '1px solid var(--border-input)', padding: '8px', borderRadius: '6px', color: 'var(--text-input)', fontSize: '12px' }}
                   >
                     <option value="INVOICE">Faktur Pembelian (Invoice)</option>
                     <option value="ORDER">Pesanan Pembelian (PO)</option>
@@ -460,10 +460,10 @@ export const PurchaseManager: React.FC = () => {
                     value={contactId} 
                     onChange={(e) => setContactId(e.target.value)}
                     className="focus-glow"
-                    style={{ width: '100%', background: '#12131a', border: '1px solid rgba(255,255,255,0.08)', padding: '8px', borderRadius: '6px', color: 'white', fontSize: '12px' }}
+                    style={{ width: '100%', background: 'var(--bg-input)', border: '1px solid var(--border-input)', padding: '8px', borderRadius: '6px', color: 'var(--text-input)', fontSize: '12px' }}
                   >
                     {contacts.map(c => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
+                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
                   </select>
                 </div>
@@ -478,7 +478,7 @@ export const PurchaseManager: React.FC = () => {
                     value={referenceId}
                     onChange={(e) => setReferenceId(e.target.value)}
                     className="focus-glow"
-                    style={{ width: '100%', background: '#12131a', border: '1px solid rgba(255,255,255,0.08)', padding: '8px', borderRadius: '6px', color: 'white', fontSize: '12px' }}
+                    style={{ width: '100%', background: 'var(--bg-input)', border: '1px solid var(--border-input)', padding: '8px', borderRadius: '6px', color: 'var(--text-input)', fontSize: '12px' }}
                   />
                 </div>
                 <div>
@@ -488,7 +488,7 @@ export const PurchaseManager: React.FC = () => {
                     value={dpApplied}
                     onChange={(e) => setDpApplied(Number(e.target.value))}
                     className="focus-glow"
-                    style={{ width: '100%', background: '#12131a', border: '1px solid rgba(255,255,255,0.08)', padding: '8px', borderRadius: '6px', color: 'white', fontSize: '12px' }}
+                    style={{ width: '100%', background: 'var(--bg-input)', border: '1px solid var(--border-input)', padding: '8px', borderRadius: '6px', color: 'var(--text-input)', fontSize: '12px' }}
                   />
                 </div>
               </div>
@@ -503,7 +503,7 @@ export const PurchaseManager: React.FC = () => {
                         value={item.productId}
                         onChange={(e) => handleItemChange(index, 'productId', e.target.value)}
                         className="focus-glow"
-                        style={{ flex: 2, background: '#12131a', border: '1px solid rgba(255,255,255,0.08)', padding: '8px', borderRadius: '6px', color: 'white', fontSize: '12px' }}
+                        style={{ flex: 2, background: 'var(--bg-input)', border: '1px solid var(--border-input)', padding: '8px', borderRadius: '6px', color: 'var(--text-input)', fontSize: '12px' }}
                       >
                         <option value="">-- Pilih Barang --</option>
                         {products.map(p => (
@@ -516,7 +516,7 @@ export const PurchaseManager: React.FC = () => {
                         value={item.qty}
                         onChange={(e) => handleItemChange(index, 'qty', Number(e.target.value))}
                         className="focus-glow"
-                        style={{ width: '60px', background: '#12131a', border: '1px solid rgba(255,255,255,0.08)', padding: '8px', borderRadius: '6px', color: 'white', fontSize: '12px', textAlign: 'center' }}
+                        style={{ width: '60px', background: 'var(--bg-input)', border: '1px solid var(--border-input)', padding: '8px', borderRadius: '6px', color: 'var(--text-input)', fontSize: '12px', textAlign: 'center' }}
                       />
                       <input 
                         type="number" 
@@ -524,7 +524,7 @@ export const PurchaseManager: React.FC = () => {
                         value={item.price}
                         onChange={(e) => handleItemChange(index, 'price', Number(e.target.value))}
                         className="focus-glow"
-                        style={{ width: '110px', background: '#12131a', border: '1px solid rgba(255,255,255,0.08)', padding: '8px', borderRadius: '6px', color: 'white', fontSize: '12px' }}
+                        style={{ width: '110px', background: 'var(--bg-input)', border: '1px solid var(--border-input)', padding: '8px', borderRadius: '6px', color: 'var(--text-input)', fontSize: '12px' }}
                       />
                       <input 
                         type="number" 
@@ -532,7 +532,7 @@ export const PurchaseManager: React.FC = () => {
                         value={item.discount}
                         onChange={(e) => handleItemChange(index, 'discount', Number(e.target.value))}
                         className="focus-glow"
-                        style={{ width: '70px', background: '#12131a', border: '1px solid rgba(255,255,255,0.08)', padding: '8px', borderRadius: '6px', color: 'white', fontSize: '12px', textAlign: 'center' }}
+                        style={{ width: '70px', background: 'var(--bg-input)', border: '1px solid var(--border-input)', padding: '8px', borderRadius: '6px', color: 'var(--text-input)', fontSize: '12px', textAlign: 'center' }}
                       />
                       <button 
                         type="button" 
@@ -579,7 +579,7 @@ export const PurchaseManager: React.FC = () => {
         <div className="modal-overlay modal-overlay-premium" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
           <div className="glass-panel" style={{ padding: '24px', borderRadius: '12px', width: '400px', display: 'flex', flexDirection: 'column', gap: '16px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px' }}>
-              <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '700', color: 'white' }}>Tambah Pemasok Baru</h3>
+              <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)' }}>Tambah Pemasok Baru</h3>
               <button style={{ background: 'transparent', border: 'none', color: '#9ca3af', cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => setShowVendorModal(false)}>
                 <X size={18} className="hover-scale" />
               </button>
@@ -590,7 +590,7 @@ export const PurchaseManager: React.FC = () => {
                 <input 
                   type="text" 
                   className="form-input focus-glow" 
-                  style={{ background: '#12131a', border: '1px solid rgba(255,255,255,0.08)', color: 'white', padding: '6px 8px', borderRadius: '6px', width: '100%', boxSizing: 'border-box' }} 
+                  style={{ background: 'var(--bg-input)', border: '1px solid var(--border-input)', color: 'var(--text-input)', padding: '6px 8px', borderRadius: '6px', width: '100%', boxSizing: 'border-box' }} 
                   placeholder="Nama Lengkap / Instansi" 
                   value={newVendorName} 
                   onChange={e => setNewVendorName(e.target.value)} 
