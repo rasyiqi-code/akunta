@@ -11,6 +11,7 @@ mod commands_inventory;
 mod commands_fixed_assets;
 mod commands_tax;
 mod commands_misc;
+mod commands_aging;
 
 // State untuk menyimpan koneksi database SQLite secara thread-safe
 pub struct DbState(pub Mutex<Connection>);
@@ -21,6 +22,7 @@ use commands_inventory::*;
 use commands_fixed_assets::*;
 use commands_tax::*;
 use commands_misc::*;
+use commands_aging::*;
 
 // ==========================================
 // ENTRY POINT RUN & ROUTING HANDLER
@@ -90,7 +92,11 @@ pub fn run() {
             adjust_fixed_asset_rust,
             get_contacts_rust,
             add_contact_rust,
-            reset_database_rust
+            reset_database_rust,
+            get_lock_date_rust,
+            close_books_rust,
+            generate_equity_statement_rust,
+            generate_aging_report_rust
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

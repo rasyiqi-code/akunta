@@ -190,6 +190,11 @@ fn migrate_schema(conn: &Connection) -> std::result::Result<(), String> {
             description TEXT NOT NULL,
             FOREIGN KEY (asset_id) REFERENCES fixed_assets(id) ON DELETE CASCADE
         );"#,
+        // 18. Settings
+        r#"CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        );"#,
     ];
 
     for q in queries {
@@ -203,6 +208,8 @@ fn migrate_schema(conn: &Connection) -> std::result::Result<(), String> {
     let _ = conn.execute("ALTER TABLE fixed_assets ADD COLUMN disposal_value REAL DEFAULT 0.0;", []);
     let _ = conn.execute("ALTER TABLE fixed_assets ADD COLUMN disposal_gain_loss REAL DEFAULT 0.0;", []);
     let _ = conn.execute("ALTER TABLE inventory_logs ADD COLUMN warehouse_id TEXT DEFAULT 'w-01';", []);
+    let _ = conn.execute("ALTER TABLE sales_documents ADD COLUMN due_date TEXT;", []);
+    let _ = conn.execute("ALTER TABLE purchase_documents ADD COLUMN due_date TEXT;", []);
 
     Ok(())
 }
@@ -446,6 +453,17 @@ pub fn seed_default_data(conn: &Connection, seed_demo: bool) -> std::result::Res
             "INSERT INTO warehouses (id, name) VALUES ('w-02', 'Gudang Transit')",
             [],
         ).map_err(|e| format!("Gagal memasukkan gudang transit default: {}", e))?;
+    }
+
+    // 9. Cek & Seed Settings
+    let count_settings: i64 = conn
+        .query_row("SELECT COUNT(*) FROM settings", [], |r| r.get(0))
+        .unwrap_or(0);
+    if count_settings == 0 {
+        conn.execute(
+            "INSERT OR IGNORE INTO settings (key, value) VALUES ('lock_date', '')",
+            [],
+        ).map_err(|e| format!("Gagal memasukkan setting lock_date default: {}", e))?;
     }
 
     Ok(())

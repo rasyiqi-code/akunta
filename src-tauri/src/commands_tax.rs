@@ -200,6 +200,18 @@ pub fn reconcile_bank_statement_rust(
     amount: f64,
 ) -> Result<String, String> {
     let mut conn = state.0.lock().unwrap();
+    
+    // Validasi lock_date
+    let lock_date: String = conn.query_row(
+        "SELECT value FROM settings WHERE key = 'lock_date'",
+        [],
+        |row| row.get(0)
+    ).unwrap_or_default();
+    
+    if !lock_date.is_empty() && date <= lock_date {
+        return Err(format!("Transaksi rekonsiliasi ditolak karena tanggal transaksi ({}) berada pada atau sebelum tanggal tutup buku ({}).", date, lock_date));
+    }
+    
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     
     // Cari jurnal yang cocok di database

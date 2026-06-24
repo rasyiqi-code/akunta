@@ -45,6 +45,8 @@ pub struct SalesDocument {
     #[serde(rename = "dpApplied")]
     pub dp_applied: f64,
     pub items: Option<Vec<SalesDocumentItem>>,
+    #[serde(rename = "dueDate")]
+    pub due_date: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -75,6 +77,8 @@ pub struct PurchaseDocument {
     #[serde(rename = "dpApplied")]
     pub dp_applied: f64,
     pub items: Option<Vec<PurchaseDocumentItem>>,
+    #[serde(rename = "dueDate")]
+    pub due_date: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -381,4 +385,48 @@ pub struct ReconciliationResult {
     pub suggested_lines: Option<Vec<JournalLine>>,
     #[serde(rename = "suggestedDescription")]
     pub suggested_description: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct EquityStatementReport {
+    #[serde(rename = "startEquity")]
+    pub start_equity: f64,
+    #[serde(rename = "additionalInvestment")]
+    pub additional_investment: f64,
+    #[serde(rename = "netProfit")]
+    pub net_profit: f64,
+    pub prive: f64,
+    #[serde(rename = "endEquity")]
+    pub end_equity: f64,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct AgingItem {
+    #[serde(rename = "contactId")]
+    pub contact_id: String,
+    #[serde(rename = "contactName")]
+    pub contact_name: String,
+    pub current: f64,
+    #[serde(rename = "period31To60")]
+    pub period_31_60: f64,
+    #[serde(rename = "period61To90")]
+    pub period_61_90: f64,
+    #[serde(rename = "over90")]
+    pub over_90: f64,
+    pub total: f64,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct AgingReport {
+    pub items: Vec<AgingItem>,
+    #[serde(rename = "totalCurrent")]
+    pub total_current: f64,
+    #[serde(rename = "total31To60")]
+    pub total_31_60: f64,
+    #[serde(rename = "total61To90")]
+    pub total_61_90: f64,
+    #[serde(rename = "totalOver90")]
+    pub total_over_90: f64,
+    #[serde(rename = "grandTotal")]
+    pub grand_total: f64,
 }

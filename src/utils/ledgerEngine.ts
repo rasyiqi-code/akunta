@@ -165,3 +165,81 @@ export async function resetDatabase(): Promise<void> {
   return await invoke<void>('reset_database_rust');
 }
 
+export interface EquityStatementReport {
+  startEquity: number;
+  additionalInvestment: number;
+  netProfit: number;
+  prive: number;
+  endEquity: number;
+}
+
+export interface AgingItem {
+  contactId: string;
+  contactName: string;
+  current: number;
+  period31To60: number;
+  period61To90: number;
+  over90: number;
+  total: number;
+}
+
+export interface AgingReport {
+  items: AgingItem[];
+  totalCurrent: number;
+  total31To60: number;
+  total61To90: number;
+  totalOver90: number;
+  grandTotal: number;
+}
+
+export async function generateEquityStatement(startDate: string, endDate: string): Promise<EquityStatementReport> {
+  try {
+    const resultJson = await invoke<string>('generate_equity_statement_rust', {
+      startDate,
+      endDate
+    });
+    return JSON.parse(resultJson);
+  } catch (err) {
+    console.error('Gagal mengambil Laporan Perubahan Ekuitas:', err);
+    return {
+      startEquity: 0,
+      additionalInvestment: 0,
+      netProfit: 0,
+      prive: 0,
+      endEquity: 0
+    };
+  }
+}
+
+export async function closePeriodBooks(closeDate: string): Promise<string> {
+  return await invoke<string>('close_books_rust', { closeDate });
+}
+
+export async function getLockDateSetting(): Promise<string> {
+  try {
+    return await invoke<string>('get_lock_date_rust');
+  } catch (err) {
+    console.error('Gagal mengambil tanggal kunci buku:', err);
+    return '';
+  }
+}
+
+export async function generateAgingReport(reportType: 'AR' | 'AP'): Promise<AgingReport> {
+  try {
+    const resultJson = await invoke<string>('generate_aging_report_rust', {
+      reportType
+    });
+    return JSON.parse(resultJson);
+  } catch (err) {
+    console.error('Gagal mengambil Laporan Umur Piutang/Utang:', err);
+    return {
+      items: [],
+      totalCurrent: 0,
+      total31To60: 0,
+      total61To90: 0,
+      totalOver90: 0,
+      grandTotal: 0
+    };
+  }
+}
+

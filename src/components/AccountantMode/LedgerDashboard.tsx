@@ -8,7 +8,8 @@ import { db } from '../../utils/db';
 import { invoke } from '@tauri-apps/api/core';
 import { 
   generateProfitLoss, generateBalanceSheet, postJournalEntry, 
-  exportToBackupString, importFromBackupString, resetDatabase 
+  exportToBackupString, importFromBackupString, resetDatabase,
+  generateEquityStatement, closePeriodBooks, getLockDateSetting, generateAgingReport
 } from '../../utils/ledgerEngine';
 import { adjustProductStock } from '../../utils/inventoryEngine';
 import { runMonthlyDepreciation, addFixedAsset, calculateMonthlyDepreciation } from '../../utils/fixedAssetEngine';
@@ -39,7 +40,7 @@ const MonthlyDepreciationCell: React.FC<{ asset: any }> = ({ asset }) => {
 };
 
 interface LedgerDashboardProps {
-  activeTab: 'JURNAL' | 'BUKUBESAR' | 'PERSEDIAAN' | 'ASETTETAP' | 'LABARUGI' | 'NERACA' | 'PAJAK' | 'NERACASALDO' | 'ARUSKAS' | 'PENJUALAN' | 'PEMBELIAN';
+  activeTab: 'JURNAL' | 'BUKUBESAR' | 'PERSEDIAAN' | 'ASETTETAP' | 'LABARUGI' | 'NERACA' | 'PAJAK' | 'NERACASALDO' | 'ARUSKAS' | 'PENJUALAN' | 'PEMBELIAN' | 'EKUITAS' | 'AGING';
 }
 
 export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) => {
@@ -152,6 +153,47 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
   // Rekonsiliasi Bank State
   const [reconcilingId, setReconcilingId] = useState<string | null>(null);
 
+  // Perubahan Ekuitas States
+  const [equityReport, setEquityReport] = useState<any>(null);
+  const [equityStartDate, setEquityStartDate] = useState(new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0]);
+  const [equityEndDate, setEquityEndDate] = useState(new Date().toISOString().split('T')[0]);
+
+  // Aging AR/AP States
+  const [agingReportType, setAgingReportType] = useState<'AR' | 'AP'>('AR');
+  const [agingReport, setAgingReport] = useState<any>(null);
+
+  // Tutup Buku States
+  const [currentLockDate, setCurrentLockDate] = useState<string>('');
+  const [showClosePeriodModal, setShowClosePeriodModal] = useState<boolean>(false);
+  const [closePeriodDate, setClosePeriodDate] = useState<string>(new Date().toISOString().split('T')[0]);
+
+  // Load Perubahan Ekuitas
+  useEffect(() => {
+    const fetchEquity = async () => {
+      const res = await generateEquityStatement(equityStartDate, equityEndDate);
+      setEquityReport(res);
+    };
+    fetchEquity();
+  }, [journals, equityStartDate, equityEndDate]);
+
+  // Load Aging Report
+  useEffect(() => {
+    const fetchAging = async () => {
+      const res = await generateAgingReport(agingReportType);
+      setAgingReport(res);
+    };
+    fetchAging();
+  }, [journals, agingReportType]);
+
+  // Load Lock Date
+  useEffect(() => {
+    const fetchLockDate = async () => {
+      const ld = await getLockDateSetting();
+      setCurrentLockDate(ld);
+    };
+    fetchLockDate();
+  }, [journals]);
+
   // Hitung Laba/Rugi & Neraca jika jurnal berubah
   useEffect(() => {
     const fetchReports = async () => {
@@ -183,6 +225,21 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
     } catch (err) {
       console.error("Gagal mereset database:", err);
       alert("Gagal mereset database: " + err);
+    }
+  };
+
+  const handleClosePeriod = async () => {
+    if (!window.confirm(`PENTING: Anda akan melakukan Tutup Buku untuk periode yang berakhir pada tanggal ${closePeriodDate}.\n\nSemua transaksi pada atau sebelum tanggal ini akan dikunci dan jurnal penutup otomatis akan dibuat.\n\nApakah Anda yakin?`)) {
+      return;
+    }
+    try {
+      await closePeriodBooks(closePeriodDate);
+      alert(`Sukses! Buku untuk periode sampai dengan ${closePeriodDate} telah ditutup dan dikunci.`);
+      setShowClosePeriodModal(false);
+      fetchData();
+    } catch (err) {
+      console.error(err);
+      alert(`Gagal melakukan tutup buku: ${err}`);
     }
   };
 
@@ -1073,6 +1130,205 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
           <CashFlow />
         )}
 
+        {/* Tab: PERUBAHAN EKUITAS */}
+        {activeTab === 'EKUITAS' && equityReport && (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ fontFamily: 'var(--font-display)', fontWeight: 600 }}>Laporan Perubahan Ekuitas</h3>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Periode:</span>
+                <input 
+                  type="date" 
+                  value={equityStartDate} 
+                  onChange={(e) => setEquityStartDate(e.target.value)} 
+                  style={{ background: 'var(--bg-input)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', padding: '4px 8px', borderRadius: '4px', fontSize: '12px' }}
+                />
+                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>s/d</span>
+                <input 
+                  type="date" 
+                  value={equityEndDate} 
+                  onChange={(e) => setEquityEndDate(e.target.value)} 
+                  style={{ background: 'var(--bg-input)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', padding: '4px 8px', borderRadius: '4px', fontSize: '12px' }}
+                />
+              </div>
+            </div>
+
+            <div className="table-wrapper" style={{ padding: '24px' }}>
+              <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+                <h2 style={{ fontFamily: 'var(--font-display)' }}>AKUNTA</h2>
+                <h4 style={{ color: 'var(--text-secondary)' }}>Laporan Perubahan Ekuitas</h4>
+                <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  Untuk Periode yang Berakhir dari {equityStartDate} sampai {equityEndDate}
+                </div>
+              </div>
+
+              <div style={{ maxWidth: '600px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', borderBottom: '1px solid var(--border-color)' }}>
+                  <span>Modal Awal Pemilik</span>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>Rp {equityReport.startEquity.toLocaleString('id-ID')}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', color: 'var(--accent-success)' }}>
+                  <span>(+) Tambahan Investasi Pemilik</span>
+                  <span style={{ fontFamily: 'monospace' }}>Rp {equityReport.additionalInvestment.toLocaleString('id-ID')}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', color: 'var(--accent-secondary)' }}>
+                  <span>(+) Laba Bersih Periode Berjalan</span>
+                  <span style={{ fontFamily: 'monospace' }}>Rp {equityReport.netProfit.toLocaleString('id-ID')}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', color: 'var(--accent-danger)', borderBottom: '1px solid var(--border-color)' }}>
+                  <span>(-) Penarikan Prive Pemilik</span>
+                  <span style={{ fontFamily: 'monospace' }}>Rp ({equityReport.prive.toLocaleString('id-ID')})</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px', fontWeight: 700, background: 'rgba(255,255,255,0.03)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', marginTop: '8px' }}>
+                  <span>MODAL AKHIR PEMILIK</span>
+                  <span style={{ fontFamily: 'monospace', color: 'var(--accent-primary)' }}>Rp {equityReport.endEquity.toLocaleString('id-ID')}</span>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Tab: AGING AR/AP */}
+        {activeTab === 'AGING' && agingReport && (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ fontFamily: 'var(--font-display)', fontWeight: 600 }}>
+                Laporan Umur {agingReportType === 'AR' ? 'Piutang (Aging AR)' : 'Utang (Aging AP)'}
+              </h3>
+              <div style={{ display: 'flex', gap: '4px', background: 'var(--bg-input)', padding: '2px', borderRadius: 'var(--radius-sm)' }}>
+                <button 
+                  className={`btn ${agingReportType === 'AR' ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ padding: '4px 12px', fontSize: '11px', margin: 0 }}
+                  onClick={() => setAgingReportType('AR')}
+                >
+                  Piutang Usaha (AR)
+                </button>
+                <button 
+                  className={`btn ${agingReportType === 'AP' ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ padding: '4px 12px', fontSize: '11px', margin: 0 }}
+                  onClick={() => setAgingReportType('AP')}
+                >
+                  Utang Usaha (AP)
+                </button>
+              </div>
+            </div>
+
+            <div className="table-wrapper">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Kontak / Mitra</th>
+                    <th style={{ textAlign: 'right' }}>Belum Jatuh Tempo / 0-30 Hari</th>
+                    <th style={{ textAlign: 'right' }}>31 - 60 Hari</th>
+                    <th style={{ textAlign: 'right' }}>61 - 90 Hari</th>
+                    <th style={{ textAlign: 'right' }}>&gt; 90 Hari</th>
+                    <th style={{ textAlign: 'right' }}>Total Tagihan</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {agingReport.items.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '24px' }}>
+                        Tidak ada invoice outstanding ({agingReportType === 'AR' ? 'piutang' : 'utang'}) yang ditemukan.
+                      </td>
+                    </tr>
+                  ) : (
+                    agingReport.items.map((item: any) => (
+                      <tr key={item.contactId}>
+                        <td style={{ fontWeight: 600 }}>{item.contactName}</td>
+                        <td className="amount-col">Rp {item.current.toLocaleString('id-ID')}</td>
+                        <td className="amount-col" style={{ color: item.period31To60 > 0 ? 'var(--accent-warning)' : 'inherit' }}>
+                          Rp {item.period31To60.toLocaleString('id-ID')}
+                        </td>
+                        <td className="amount-col" style={{ color: item.period61To90 > 0 ? 'rgba(234, 179, 8, 0.9)' : 'inherit' }}>
+                          Rp {item.period61To90.toLocaleString('id-ID')}
+                        </td>
+                        <td className="amount-col" style={{ color: item.over90 > 0 ? 'var(--accent-danger)' : 'inherit', fontWeight: item.over90 > 0 ? 600 : 'normal' }}>
+                          Rp {item.over90.toLocaleString('id-ID')}
+                        </td>
+                        <td className="amount-col" style={{ fontWeight: 700 }}>
+                          Rp {item.total.toLocaleString('id-ID')}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                  {agingReport.items.length > 0 && (
+                    <tr style={{ fontWeight: 700, background: 'rgba(255,255,255,0.02)', borderTop: '2px solid var(--border-color)' }}>
+                      <td>TOTAL</td>
+                      <td className="amount-col">Rp {agingReport.totalCurrent.toLocaleString('id-ID')}</td>
+                      <td className="amount-col">Rp {agingReport.total31_60.toLocaleString('id-ID')}</td>
+                      <td className="amount-col">Rp {agingReport.total61_90.toLocaleString('id-ID')}</td>
+                      <td className="amount-col">Rp {agingReport.totalOver90.toLocaleString('id-ID')}</td>
+                      <td className="amount-col" style={{ color: 'var(--accent-primary)' }}>
+                        Rp {agingReport.grandTotal.toLocaleString('id-ID')}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Diagram/Bar Visual sederhana untuk representasi umur */}
+            {agingReport.items.length > 0 && (
+              <div style={{ background: 'var(--bg-card)', padding: '16px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', marginTop: '20px' }}>
+                <h4 style={{ fontSize: '13px', fontWeight: 600, marginBottom: '12px' }}>Distribusi Risiko Umur Tagihan</h4>
+                <div style={{ display: 'flex', height: '24px', borderRadius: '4px', overflow: 'hidden' }}>
+                  {agingReport.grandTotal > 0 ? (
+                    <>
+                      <div 
+                        style={{ width: `${(agingReport.totalCurrent / agingReport.grandTotal) * 100}%`, background: 'var(--accent-success)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: 'black', fontWeight: 700 }}
+                        title={`Lancar: Rp ${agingReport.totalCurrent.toLocaleString('id-ID')}`}
+                      >
+                        {agingReport.totalCurrent > 0 && `${Math.round((agingReport.totalCurrent / agingReport.grandTotal) * 100)}%`}
+                      </div>
+                      <div 
+                        style={{ width: `${(agingReport.total31_60 / agingReport.grandTotal) * 100}%`, background: 'var(--accent-warning)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: 'black', fontWeight: 700 }}
+                        title={`31-60 hari: Rp ${agingReport.total31_60.toLocaleString('id-ID')}`}
+                      >
+                        {agingReport.total31_60 > 0 && `${Math.round((agingReport.total31_60 / agingReport.grandTotal) * 100)}%`}
+                      </div>
+                      <div 
+                        style={{ width: `${(agingReport.total61_90 / agingReport.grandTotal) * 100}%`, background: 'rgba(234, 179, 8, 0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: 'black', fontWeight: 700 }}
+                        title={`61-90 hari: Rp ${agingReport.total61_90.toLocaleString('id-ID')}`}
+                      >
+                        {agingReport.total61_90 > 0 && `${Math.round((agingReport.total61_90 / agingReport.grandTotal) * 100)}%`}
+                      </div>
+                      <div 
+                        style={{ width: `${(agingReport.totalOver90 / agingReport.grandTotal) * 100}%`, background: 'var(--accent-danger)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: 'white', fontWeight: 700 }}
+                        title={`>90 hari: Rp ${agingReport.totalOver90.toLocaleString('id-ID')}`}
+                      >
+                        {agingReport.totalOver90 > 0 && `${Math.round((agingReport.totalOver90 / agingReport.grandTotal) * 100)}%`}
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{ flex: 1, background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', color: 'var(--text-muted)' }}>
+                      Tidak ada data grafik
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginTop: '8px', color: 'var(--text-secondary)' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span style={{ display: 'inline-block', width: '8px', height: '8px', background: 'var(--accent-success)', borderRadius: '50%' }}></span>
+                    0-30 Hari
+                  </span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span style={{ display: 'inline-block', width: '8px', height: '8px', background: 'var(--accent-warning)', borderRadius: '50%' }}></span>
+                    31-60 Hari
+                  </span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span style={{ display: 'inline-block', width: '8px', height: '8px', background: 'rgba(234, 179, 8, 0.9)', borderRadius: '50%' }}></span>
+                    61-90 Hari
+                  </span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span style={{ display: 'inline-block', width: '8px', height: '8px', background: 'var(--accent-danger)', borderRadius: '50%' }}></span>
+                    &gt;90 Hari
+                  </span>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
         {/* Tab: ASET TETAP (Fase 2) */}
         {activeTab === 'ASETTETAP' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -1241,7 +1497,7 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
             </div>
 
             {/* Pajak Indonesia & Backup Section */}
-            <div style={{ display: 'flex', gap: '20px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
               <div style={{ flex: 1, background: 'var(--bg-card)', padding: '20px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
                 <h4 style={{ fontFamily: 'var(--font-display)', fontWeight: 600, marginBottom: '12px' }}>e-Faktur Pajak ( simulator )</h4>
                 <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
@@ -1267,15 +1523,17 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
                 </div>
               </div>
 
-              <div style={{ flex: 1, background: 'var(--bg-card)', padding: '20px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
-                <h4 style={{ fontFamily: 'var(--font-display)', fontWeight: 600, marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Database size={16} />
-                  <span>Cadangan & Pemulihan (Backup)</span>
-                </h4>
-                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-                  Ekspor seluruh database lokal (IndexedDB) Akunta ke file JSON portabel.
-                </p>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <div style={{ flex: 1, background: 'var(--bg-card)', padding: '20px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                <div>
+                  <h4 style={{ fontFamily: 'var(--font-display)', fontWeight: 600, marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Database size={16} />
+                    <span>Cadangan & Pemulihan (Backup)</span>
+                  </h4>
+                  <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+                    Ekspor seluruh database lokal (IndexedDB) Akunta ke file JSON portabel.
+                  </p>
+                </div>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                   <button className="btn btn-primary" onClick={handleDownloadBackup}>
                     <Download size={12} />
                     <span>Unduh Backup</span>
@@ -1312,6 +1570,31 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
                   </button>
                 </div>
               </div>
+
+              <div style={{ background: 'var(--bg-card)', padding: '20px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                <div>
+                  <h4 style={{ fontFamily: 'var(--font-display)', fontWeight: 600, marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <CheckCircle size={16} style={{ color: 'var(--accent-success)' }} />
+                    <span>Tutup Buku Periodik</span>
+                  </h4>
+                  <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+                    Kunci entri transaksi sebelum/pada tanggal penutupan. Pendapatan & Beban dinolkan ke Laba Ditahan.
+                  </p>
+                  <div style={{ marginBottom: '16px', fontSize: '12px' }}>
+                    Status Kunci Buku: <strong style={{ color: currentLockDate ? 'var(--accent-warning)' : 'var(--text-secondary)' }}>
+                      {currentLockDate ? `Terkunci s/d ${currentLockDate}` : 'Bebas (Belum dikunci)'}
+                    </strong>
+                  </div>
+                </div>
+                <button 
+                  className="btn btn-primary" 
+                  onClick={() => setShowClosePeriodModal(true)}
+                  style={{ width: 'fit-content' }}
+                >
+                  <Play size={12} />
+                  <span>Jalankan Tutup Buku</span>
+                </button>
+              </div>
             </div>
 
           </div>
@@ -1326,6 +1609,59 @@ export const LedgerDashboard: React.FC<LedgerDashboardProps> = ({ activeTab }) =
         )}
 
       </div>
+
+      {/* Modal Tutup Buku */}
+      {showClosePeriodModal && (
+        <div className="modal-overlay modal-overlay-premium" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
+          <div className="glass-panel" style={{ padding: '24px', borderRadius: '12px', width: '450px', display: 'flex', flexDirection: 'column', gap: '16px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px' }}>
+              <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '700', color: 'white' }}>Jalankan Tutup Buku Periodik</h3>
+              <button style={{ background: 'transparent', border: 'none', color: '#9ca3af', cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => setShowClosePeriodModal(false)}>
+                <X size={18} className="hover-scale" />
+              </button>
+            </div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div style={{ background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.2)', padding: '12px', borderRadius: '8px', fontSize: '11px', color: '#fca5a5', lineHeight: '1.5' }}>
+                <div style={{ fontWeight: 700, marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <AlertTriangle size={14} />
+                  <span>PERINGATAN PENTING</span>
+                </div>
+                Proses tutup buku akan mengunci transaksi sebelum/pada tanggal penutupan. 
+                Sistem akan membuat jurnal penutup otomatis untuk menolkan saldo akun Pendapatan & Beban, serta memindahkan laba bersih ke Laba Ditahan. Tindakan ini tidak dapat dibatalkan secara instan.
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Tanggal Penutupan Buku</label>
+                <input 
+                  type="date" 
+                  className="form-input focus-glow" 
+                  style={{ background: '#12131a', border: '1px solid rgba(255,255,255,0.08)', color: 'white', padding: '6px 8px', borderRadius: '6px', width: '100%' }} 
+                  value={closePeriodDate} 
+                  onChange={e => setClosePeriodDate(e.target.value)} 
+                  required 
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '8px' }}>
+                <button 
+                  className="btn btn-secondary" 
+                  onClick={() => setShowClosePeriodModal(false)}
+                >
+                  Batal
+                </button>
+                <button 
+                  className="btn btn-primary" 
+                  style={{ background: 'var(--accent-primary)', color: 'black' }}
+                  onClick={handleClosePeriod}
+                >
+                  Proses Tutup Buku
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal Jurnal Manual */}
       {showJurnalModal && (

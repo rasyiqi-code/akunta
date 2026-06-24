@@ -6,7 +6,7 @@ use crate::{
 // Ambil semua dokumen penjualan beserta itemnya
 pub fn get_sales_documents(conn: &Connection) -> Result<Vec<SalesDocument>, String> {
     let mut stmt = conn.prepare(
-        "SELECT id, date, contact_id, type, status, reference_id, total_amount, dp_applied FROM sales_documents ORDER BY date DESC"
+        "SELECT id, date, contact_id, type, status, reference_id, total_amount, dp_applied, due_date FROM sales_documents ORDER BY date DESC"
     ).map_err(|e| e.to_string())?;
 
     let doc_iter = stmt
@@ -21,6 +21,7 @@ pub fn get_sales_documents(conn: &Connection) -> Result<Vec<SalesDocument>, Stri
                 total_amount: row.get(6)?,
                 dp_applied: row.get(7)?,
                 items: None,
+                due_date: row.get(8)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -61,10 +62,22 @@ pub fn get_sales_documents(conn: &Connection) -> Result<Vec<SalesDocument>, Stri
 
 // Buat Dokumen Penjualan Baru (jika INVOICE, buat Jurnal Otomatis & Mutasi Persediaan)
 pub fn create_sales_document(conn: &Connection, doc: SalesDocument) -> Result<String, String> {
+    let due_date_val = match &doc.due_date {
+        Some(d) if !d.is_empty() => d.clone(),
+        _ => {
+            if let Ok(parsed_date) = chrono::NaiveDate::parse_from_str(&doc.date, "%Y-%m-%d") {
+                let fall = parsed_date + chrono::Duration::days(30);
+                fall.format("%Y-%m-%d").to_string()
+            } else {
+                doc.date.clone()
+            }
+        }
+    };
+
     // 1. Simpan dokumen utama
     conn.execute(
-        "INSERT INTO sales_documents (id, date, contact_id, type, status, reference_id, total_amount, dp_applied) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-        params![doc.id, doc.date, doc.contact_id, doc.doc_type, doc.status, doc.reference_id, doc.total_amount, doc.dp_applied],
+        "INSERT INTO sales_documents (id, date, contact_id, type, status, reference_id, total_amount, dp_applied, due_date) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        params![doc.id, doc.date, doc.contact_id, doc.doc_type, doc.status, doc.reference_id, doc.total_amount, doc.dp_applied, due_date_val],
     ).map_err(|e| e.to_string())?;
 
     // 2. Simpan items
@@ -189,7 +202,7 @@ pub fn create_sales_document(conn: &Connection, doc: SalesDocument) -> Result<St
 // Ambil semua dokumen pembelian beserta itemnya
 pub fn get_purchase_documents(conn: &Connection) -> Result<Vec<PurchaseDocument>, String> {
     let mut stmt = conn.prepare(
-        "SELECT id, date, contact_id, type, status, reference_id, total_amount, dp_applied FROM purchase_documents ORDER BY date DESC"
+        "SELECT id, date, contact_id, type, status, reference_id, total_amount, dp_applied, due_date FROM purchase_documents ORDER BY date DESC"
     ).map_err(|e| e.to_string())?;
 
     let doc_iter = stmt
@@ -204,6 +217,7 @@ pub fn get_purchase_documents(conn: &Connection) -> Result<Vec<PurchaseDocument>
                 total_amount: row.get(6)?,
                 dp_applied: row.get(7)?,
                 items: None,
+                due_date: row.get(8)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -246,9 +260,21 @@ pub fn create_purchase_document(
     conn: &Connection,
     doc: PurchaseDocument,
 ) -> Result<String, String> {
+    let due_date_val = match &doc.due_date {
+        Some(d) if !d.is_empty() => d.clone(),
+        _ => {
+            if let Ok(parsed_date) = chrono::NaiveDate::parse_from_str(&doc.date, "%Y-%m-%d") {
+                let fall = parsed_date + chrono::Duration::days(30);
+                fall.format("%Y-%m-%d").to_string()
+            } else {
+                doc.date.clone()
+            }
+        }
+    };
+
     conn.execute(
-        "INSERT INTO purchase_documents (id, date, contact_id, type, status, reference_id, total_amount, dp_applied) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-        params![doc.id, doc.date, doc.contact_id, doc.doc_type, doc.status, doc.reference_id, doc.total_amount, doc.dp_applied],
+        "INSERT INTO purchase_documents (id, date, contact_id, type, status, reference_id, total_amount, dp_applied, due_date) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        params![doc.id, doc.date, doc.contact_id, doc.doc_type, doc.status, doc.reference_id, doc.total_amount, doc.dp_applied, due_date_val],
     ).map_err(|e| e.to_string())?;
 
     if let Some(items) = &doc.items {

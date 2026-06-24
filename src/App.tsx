@@ -10,7 +10,7 @@ import { LedgerDashboard } from './components/AccountantMode/LedgerDashboard';
 import { TitleBar } from './components/TitleBar';
 import { CommandMenu } from './components/CommandMenu';
 
-type ModuleTab = 'JURNAL' | 'BUKUBESAR' | 'PERSEDIAAN' | 'ASETTETAP' | 'LABARUGI' | 'NERACA' | 'PAJAK' | 'NERACASALDO' | 'ARUSKAS' | 'PENJUALAN' | 'PEMBELIAN';
+type ModuleTab = 'JURNAL' | 'BUKUBESAR' | 'PERSEDIAAN' | 'ASETTETAP' | 'LABARUGI' | 'NERACA' | 'PAJAK' | 'NERACASALDO' | 'ARUSKAS' | 'PENJUALAN' | 'PEMBELIAN' | 'EKUITAS' | 'AGING';
 
 function App() {
   const [activeTab, setActiveTab] = useState<ModuleTab>('JURNAL');
@@ -42,9 +42,11 @@ function App() {
       case 'ASETTETAP': return 'Aset Tetap';
       case 'LABARUGI': return 'Laporan Laba Rugi';
       case 'NERACA': return 'Laporan Neraca';
+      case 'EKUITAS': return 'Laporan Perubahan Ekuitas';
       case 'PAJAK': return 'Bank & Perpajakan';
       case 'NERACASALDO': return 'Neraca Saldo';
       case 'ARUSKAS': return 'Laporan Arus Kas';
+      case 'AGING': return 'Analisis Umur Piutang & Utang';
       default: return 'Modul';
     }
   };
@@ -155,37 +157,53 @@ function App() {
 
           <div className="sidebar-section-title" style={{ marginTop: '12px' }}>Laporan Keuangan</div>
           <nav className="sidebar-menu">
-            <div 
-              className={`sidebar-item ${activeTab === 'LABARUGI' ? 'active' : ''}`}
-              onClick={() => setActiveTab('LABARUGI')}
-            >
-              <FileText size={13} />
-              <span>Laba Rugi</span>
-            </div>
+             <div 
+               className={`sidebar-item ${activeTab === 'LABARUGI' ? 'active' : ''}`}
+               onClick={() => setActiveTab('LABARUGI')}
+             >
+               <FileText size={13} />
+               <span>Laba Rugi</span>
+             </div>
+ 
+             <div 
+               className={`sidebar-item ${activeTab === 'NERACA' ? 'active' : ''}`}
+               onClick={() => setActiveTab('NERACA')}
+             >
+               <FileText size={13} />
+               <span>Neraca</span>
+             </div>
 
-            <div 
-              className={`sidebar-item ${activeTab === 'NERACA' ? 'active' : ''}`}
-              onClick={() => setActiveTab('NERACA')}
-            >
-              <FileText size={13} />
-              <span>Neraca</span>
-            </div>
+             <div 
+               className={`sidebar-item ${activeTab === 'EKUITAS' ? 'active' : ''}`}
+               onClick={() => setActiveTab('EKUITAS')}
+             >
+               <FileText size={13} />
+               <span>Perubahan Ekuitas</span>
+             </div>
+ 
+             <div 
+               className={`sidebar-item ${activeTab === 'ARUSKAS' ? 'active' : ''}`}
+               onClick={() => setActiveTab('ARUSKAS')}
+             >
+               <FileText size={13} />
+               <span>Arus Kas</span>
+             </div>
 
-            <div 
-              className={`sidebar-item ${activeTab === 'ARUSKAS' ? 'active' : ''}`}
-              onClick={() => setActiveTab('ARUSKAS')}
-            >
-              <FileText size={13} />
-              <span>Arus Kas</span>
-            </div>
-
-            <div 
-              className={`sidebar-item ${activeTab === 'PAJAK' ? 'active' : ''}`}
-              onClick={() => setActiveTab('PAJAK')}
-            >
-              <Settings size={13} />
-              <span>Bank & Pajak</span>
-            </div>
+             <div 
+               className={`sidebar-item ${activeTab === 'AGING' ? 'active' : ''}`}
+               onClick={() => setActiveTab('AGING')}
+             >
+               <FileText size={13} />
+               <span>Analisis Piutang</span>
+             </div>
+ 
+             <div 
+               className={`sidebar-item ${activeTab === 'PAJAK' ? 'active' : ''}`}
+               onClick={() => setActiveTab('PAJAK')}
+             >
+               <Settings size={13} />
+               <span>Bank & Pajak</span>
+             </div>
           </nav>
         </div>
 
@@ -267,9 +285,9 @@ function App() {
               {previewTab === 'WARROOM' ? (
                 <WarRoom />
               ) : (
-                <ChatInterface onReportRequested={(report) => {
+                <ChatInterface onReportRequested={(report: any) => {
                   if (report === 'PIUTANG') {
-                    setActiveTab('PAJAK');
+                    setActiveTab('AGING');
                   } else {
                     setActiveTab(report);
                   }

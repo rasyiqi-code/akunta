@@ -110,6 +110,18 @@ pub fn post_journal_entry_rust(
     let is_anomaly = detect_anomaly_rules(&entry);
     
     let mut conn = state.0.lock().unwrap();
+    
+    // Validasi lock_date
+    let lock_date: String = conn.query_row(
+        "SELECT value FROM settings WHERE key = 'lock_date'",
+        [],
+        |row| row.get(0)
+    ).unwrap_or_default();
+    
+    if !lock_date.is_empty() && entry.date <= lock_date {
+        return Err(format!("Transaksi ditolak karena tanggal transaksi ({}) berada pada atau sebelum tanggal tutup buku ({}).", entry.date, lock_date));
+    }
+    
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     
     tx.execute(
@@ -652,6 +664,228 @@ pub fn generate_cash_flow_rust(state: State<DbState>) -> Result<String, String> 
         net_increase,
         start_balance,
         end_balance,
+    };
+    
+    serde_json::to_string(&report).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_lock_date_rust(state: State<DbState>) -> Result<String, String> {
+    let conn = state.0.lock().unwrap();
+    let lock_date: String = conn.query_row(
+        "SELECT value FROM settings WHERE key = 'lock_date'",
+        [],
+        |row| row.get(0)
+    ).unwrap_or_default();
+    Ok(lock_date)
+}
+
+#[tauri::command]
+pub fn close_books_rust(
+    app_handle: tauri::AppHandle,
+    state: State<DbState>,
+    close_date: String,
+) -> Result<String, String> {
+    let mut conn = state.0.lock().unwrap();
+    
+    // 1. Cek lock_date sebelumnya
+    let current_lock_date: String = conn.query_row(
+        "SELECT value FROM settings WHERE key = 'lock_date'",
+        [],
+        |row| row.get(0)
+    ).unwrap_or_default();
+    
+    if !current_lock_date.is_empty() && close_date <= current_lock_date {
+        return Err(format!("Tanggal tutup buku ({}) harus setelah tanggal tutup buku sebelumnya ({}).", close_date, current_lock_date));
+    }
+    
+    let mut lines = Vec::new();
+    let mut total_debit = 0.0;
+    let mut total_credit = 0.0;
+    
+    // 2. Ambil saldo akun pendapatan dan beban sampai close_date
+    {
+        let mut stmt = conn.prepare(
+            r#"SELECT a.code, a.type, a.normal_balance,
+                      COALESCE(SUM(jl.debit), 0.0), COALESCE(SUM(jl.credit), 0.0)
+               FROM accounts a
+               JOIN journal_lines jl ON a.code = jl.account_code
+               JOIN journals j ON jl.journal_id = j.id
+               WHERE a.type IN ('PENDAPATAN', 'BEBAN') AND j.date <= ?1
+               GROUP BY a.code"#
+        ).map_err(|e| e.to_string())?;
+        
+        let rows = stmt.query_map([&close_date], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, f64>(3)?,
+                row.get::<_, f64>(4)?,
+            ))
+        }).map_err(|e| e.to_string())?;
+        
+        for r in rows {
+            let (code, acc_type, normal_balance, debit, credit) = r.map_err(|e| e.to_string())?;
+            
+            let balance = if normal_balance == "D" {
+                debit - credit
+            } else {
+                credit - debit
+            };
+            
+            if balance.abs() < 0.01 {
+                continue;
+            }
+            
+            if acc_type == "PENDAPATAN" {
+                // Debit pendapatan untuk menutupnya (normal balance K)
+                lines.push(JournalLine {
+                    account_code: code,
+                    debit: balance,
+                    credit: 0.0,
+                });
+                total_debit += balance;
+            } else if acc_type == "BEBAN" {
+                // Kredit beban untuk menutupnya (normal balance D)
+                lines.push(JournalLine {
+                    account_code: code,
+                    debit: 0.0,
+                    credit: balance,
+                });
+                total_credit += balance;
+            }
+        }
+    }
+    
+    // Hitung Laba Bersih
+    let net_profit = total_debit - total_credit;
+    if net_profit.abs() >= 0.01 {
+        if net_profit > 0.0 {
+            // Untung: Kredit Laba Ditahan (3102)
+            lines.push(JournalLine {
+                account_code: "3102".to_string(),
+                debit: 0.0,
+                credit: net_profit,
+            });
+        } else {
+            // Rugi: Debit Laba Ditahan (3102)
+            lines.push(JournalLine {
+                account_code: "3102".to_string(),
+                debit: -net_profit,
+                credit: 0.0,
+            });
+        }
+    }
+    
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    
+    // Jika ada akun yang ditutup, buat jurnal penutup
+    if !lines.is_empty() {
+        let close_jrn_id = format!("JRN-CLOSE-{}", close_date);
+        
+        // Hapus dulu jika jurnal penutup dengan id sama sudah ada (untuk keamanan idempotensi)
+        tx.execute("DELETE FROM journal_lines WHERE journal_id = ?1", [&close_jrn_id]).map_err(|e| e.to_string())?;
+        tx.execute("DELETE FROM journals WHERE id = ?1", [&close_jrn_id]).map_err(|e| e.to_string())?;
+        
+        tx.execute(
+            "INSERT INTO journals (id, date, description, reference, is_anomaly) VALUES (?1, ?2, ?3, ?4, 0)",
+            rusqlite::params![
+                close_jrn_id,
+                close_date,
+                format!("Jurnal Penutup Otomatis per {}", close_date),
+                "TUTUP_BUKU"
+            ]
+        ).map_err(|e| e.to_string())?;
+        
+        for line in &lines {
+            tx.execute(
+                "INSERT INTO journal_lines (journal_id, account_code, debit, credit) VALUES (?1, ?2, ?3, ?4)",
+                rusqlite::params![close_jrn_id, line.account_code, line.debit, line.credit]
+            ).map_err(|e| e.to_string())?;
+        }
+    }
+    
+    // 3. Update settings lock_date
+    tx.execute(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES ('lock_date', ?1)",
+        [&close_date]
+    ).map_err(|e| e.to_string())?;
+    
+    tx.commit().map_err(|e| e.to_string())?;
+    
+    let _ = app_handle.emit("db-update", "journals");
+    let _ = app_handle.emit("db-update", "settings");
+    
+    Ok(close_date)
+}
+
+#[tauri::command]
+pub fn generate_equity_statement_rust(
+    state: State<DbState>,
+    start_date: String,
+    end_date: String,
+) -> Result<String, String> {
+    let conn = state.0.lock().unwrap();
+    
+    // 1. Modal awal (sebelum start_date)
+    let (debit_3101_start, credit_3101_start): (f64, f64) = conn.query_row(
+        "SELECT COALESCE(SUM(jl.debit), 0.0), COALESCE(SUM(jl.credit), 0.0) FROM journal_lines jl JOIN journals j ON jl.journal_id = j.id WHERE jl.account_code = '3101' AND j.date < ?1",
+        [&start_date],
+        |row| Ok((row.get(0)?, row.get(1)?))
+    ).unwrap_or((0.0, 0.0));
+    let bal_3101_start = credit_3101_start - debit_3101_start;
+
+    let (debit_3102_start, credit_3102_start): (f64, f64) = conn.query_row(
+        "SELECT COALESCE(SUM(jl.debit), 0.0), COALESCE(SUM(jl.credit), 0.0) FROM journal_lines jl JOIN journals j ON jl.journal_id = j.id WHERE jl.account_code = '3102' AND j.date < ?1",
+        [&start_date],
+        |row| Ok((row.get(0)?, row.get(1)?))
+    ).unwrap_or((0.0, 0.0));
+    let bal_3102_start = credit_3102_start - debit_3102_start;
+    
+    let start_equity = bal_3101_start + bal_3102_start;
+    
+    // 2. Transaksi Modal Pemilik (3101) selama periode
+    let (debit_3101_period, credit_3101_period): (f64, f64) = conn.query_row(
+        "SELECT COALESCE(SUM(jl.debit), 0.0), COALESCE(SUM(jl.credit), 0.0) FROM journal_lines jl JOIN journals j ON jl.journal_id = j.id WHERE jl.account_code = '3101' AND j.date >= ?1 AND j.date <= ?2",
+        rusqlite::params![start_date, end_date],
+        |row| Ok((row.get(0)?, row.get(1)?))
+    ).unwrap_or((0.0, 0.0));
+    
+    let additional_investment = credit_3101_period;
+    let prive = debit_3101_period;
+    
+    // 3. Laba Bersih berjalan selama periode (dari Pendapatan & Beban)
+    let mut stmt_pl = conn.prepare(
+        r#"SELECT a.type, jl.debit, jl.credit 
+           FROM journal_lines jl
+           JOIN journals j ON jl.journal_id = j.id
+           JOIN accounts a ON jl.account_code = a.code
+           WHERE a.type IN ('PENDAPATAN', 'BEBAN') AND j.date >= ?1 AND j.date <= ?2"#
+    ).map_err(|e| e.to_string())?;
+
+    let pl_iter = stmt_pl.query_map(rusqlite::params![start_date, end_date], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, f64>(1)?, row.get::<_, f64>(2)?))
+    }).map_err(|e| e.to_string())?;
+
+    let mut net_profit = 0.0;
+    for item in pl_iter {
+        let (acc_type, debit, credit) = item.map_err(|e| e.to_string())?;
+        if acc_type == "PENDAPATAN" {
+            net_profit += credit - debit;
+        } else if acc_type == "BEBAN" {
+            net_profit -= debit - credit;
+        }
+    }
+    
+    let end_equity = start_equity + additional_investment - prive + net_profit;
+    
+    let report = EquityStatementReport {
+        start_equity,
+        additional_investment,
+        net_profit,
+        prive,
+        end_equity,
     };
     
     serde_json::to_string(&report).map_err(|e| e.to_string())
