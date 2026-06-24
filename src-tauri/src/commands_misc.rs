@@ -559,8 +559,8 @@ pub fn reset_database_rust(app_handle: tauri::AppHandle, state: State<'_, DbStat
     // Reset sequence auto-increment
     let _ = conn.execute("DELETE FROM sqlite_sequence", []);
     
-    // Seed default data
-    db::seed_default_data(&conn)?;
+    // Seed default data (tanpa data demo)
+    db::seed_default_data(&conn, false)?;
     
     // Emit ke all listeners
     let _ = app_handle.emit("db-update", "all");

@@ -22,7 +22,7 @@ pub fn init_db(app_handle: &tauri::AppHandle) -> Result<Connection, String> {
         .map_err(|e| format!("Gagal mengaktifkan foreign keys: {}", e))?;
 
     migrate_schema(&conn)?;
-    seed_default_data(&conn)?;
+    seed_default_data(&conn, true)?;
 
     Ok(conn)
 }
@@ -207,7 +207,7 @@ fn migrate_schema(conn: &Connection) -> std::result::Result<(), String> {
     Ok(())
 }
 
-pub fn seed_default_data(conn: &Connection) -> std::result::Result<(), String> {
+pub fn seed_default_data(conn: &Connection, seed_demo: bool) -> std::result::Result<(), String> {
     // 1. Cek & Seed Accounts
     let count_accounts: i64 = conn
         .query_row("SELECT COUNT(*) FROM accounts", [], |r| r.get(0))
@@ -276,139 +276,141 @@ pub fn seed_default_data(conn: &Connection) -> std::result::Result<(), String> {
         }
     }
 
-    // 3. Cek & Seed Bank Statements
-    let count_statements: i64 = conn
-        .query_row("SELECT COUNT(*) FROM bank_statements", [], |r| r.get(0))
-        .map_err(|e| format!("Gagal membaca count bank statements: {}", e))?;
+    if seed_demo {
+        // 3. Cek & Seed Bank Statements
+        let count_statements: i64 = conn
+            .query_row("SELECT COUNT(*) FROM bank_statements", [], |r| r.get(0))
+            .map_err(|e| format!("Gagal membaca count bank statements: {}", e))?;
 
-    if count_statements == 0 {
-        let default_statements = vec![
-            (
-                "st-01",
-                "2026-06-20",
-                "TRANSFER DARI PT SEJAHTERA",
-                5000000.0,
-            ),
-            ("st-02", "2026-06-21", "BIAYA ADMIN BANK", -15000.0),
-            ("st-03", "2026-06-22", "TARIKAN TUNAI KAS", -2000000.0),
-            ("st-04", "2026-06-23", "PEMBAYARAN ZOOM INC", -250000.0),
-        ];
+        if count_statements == 0 {
+            let default_statements = vec![
+                (
+                    "st-01",
+                    "2026-06-20",
+                    "TRANSFER DARI PT SEJAHTERA",
+                    5000000.0,
+                ),
+                ("st-02", "2026-06-21", "BIAYA ADMIN BANK", -15000.0),
+                ("st-03", "2026-06-22", "TARIKAN TUNAI KAS", -2000000.0),
+                ("st-04", "2026-06-23", "PEMBAYARAN ZOOM INC", -250000.0),
+            ];
 
-        for s in default_statements {
-            conn.execute(
-                "INSERT INTO bank_statements (id, date, description, amount) VALUES (?1, ?2, ?3, ?4)",
-                rusqlite::params![s.0, s.1, s.2, s.3],
-            ).map_err(|e| format!("Gagal memasukkan bank statement default {}: {}", s.0, e))?;
+            for s in default_statements {
+                conn.execute(
+                    "INSERT INTO bank_statements (id, date, description, amount) VALUES (?1, ?2, ?3, ?4)",
+                    rusqlite::params![s.0, s.1, s.2, s.3],
+                ).map_err(|e| format!("Gagal memasukkan bank statement default {}: {}", s.0, e))?;
+            }
         }
-    }
 
-    // 4. Cek & Seed Products
-    let count_products: i64 = conn
-        .query_row("SELECT COUNT(*) FROM products", [], |r| r.get(0))
-        .map_err(|e| format!("Gagal membaca count products: {}", e))?;
+        // 4. Cek & Seed Products
+        let count_products: i64 = conn
+            .query_row("SELECT COUNT(*) FROM products", [], |r| r.get(0))
+            .map_err(|e| format!("Gagal membaca count products: {}", e))?;
 
-    if count_products == 0 {
-        let default_products = vec![
-            (
-                "prod-01",
-                "Biji Kopi Arabika",
-                "KOPI-ARB",
-                12.0,
-                40000.0,
-                60000.0,
-            ),
-            ("prod-02", "Suku UHT 1L", "MILK-UHT", 20.0, 15000.0, 22000.0),
-        ];
+        if count_products == 0 {
+            let default_products = vec![
+                (
+                    "prod-01",
+                    "Biji Kopi Arabika",
+                    "KOPI-ARB",
+                    12.0,
+                    40000.0,
+                    60000.0,
+                ),
+                ("prod-02", "Suku UHT 1L", "MILK-UHT", 20.0, 15000.0, 22000.0),
+            ];
 
-        for p in default_products {
-            conn.execute(
-                "INSERT INTO products (id, name, sku, stock_qty, average_cost, selling_price) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                rusqlite::params![p.0, p.1, p.2, p.3, p.4, p.5],
-            ).map_err(|e| format!("Gagal memasukkan produk default {}: {}", p.0, e))?;
+            for p in default_products {
+                conn.execute(
+                    "INSERT INTO products (id, name, sku, stock_qty, average_cost, selling_price) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    rusqlite::params![p.0, p.1, p.2, p.3, p.4, p.5],
+                ).map_err(|e| format!("Gagal memasukkan produk default {}: {}", p.0, e))?;
+            }
         }
-    }
 
-    // 5. Cek & Seed Inventory Logs
-    let count_inv_logs: i64 = conn
-        .query_row("SELECT COUNT(*) FROM inventory_logs", [], |r| r.get(0))
-        .map_err(|e| format!("Gagal membaca count inventory logs: {}", e))?;
+        // 5. Cek & Seed Inventory Logs
+        let count_inv_logs: i64 = conn
+            .query_row("SELECT COUNT(*) FROM inventory_logs", [], |r| r.get(0))
+            .map_err(|e| format!("Gagal membaca count inventory logs: {}", e))?;
 
-    if count_inv_logs == 0 {
-        let default_logs = vec![
-            (
-                "log-01",
-                "prod-01",
-                "2026-06-20",
-                "MASUK",
-                10.0,
-                40000.0,
-                "INIT",
-                "w-01",
-            ),
-            (
-                "log-02",
-                "prod-02",
-                "2026-06-20",
-                "MASUK",
-                20.0,
-                15000.0,
-                "INIT",
-                "w-01",
-            ),
-            (
-                "log-03",
-                "prod-01",
-                "2026-06-21",
-                "MASUK",
-                2.0,
-                40000.0,
-                "INIT",
-                "w-02",
-            ),
-        ];
+        if count_inv_logs == 0 {
+            let default_logs = vec![
+                (
+                    "log-01",
+                    "prod-01",
+                    "2026-06-20",
+                    "MASUK",
+                    10.0,
+                    40000.0,
+                    "INIT",
+                    "w-01",
+                ),
+                (
+                    "log-02",
+                    "prod-02",
+                    "2026-06-20",
+                    "MASUK",
+                    20.0,
+                    15000.0,
+                    "INIT",
+                    "w-01",
+                ),
+                (
+                    "log-03",
+                    "prod-01",
+                    "2026-06-21",
+                    "MASUK",
+                    2.0,
+                    40000.0,
+                    "INIT",
+                    "w-02",
+                ),
+            ];
 
-        for l in default_logs {
-            conn.execute(
-                "INSERT INTO inventory_logs (id, product_id, date, type, qty, cost, reference, warehouse_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-                rusqlite::params![l.0, l.1, l.2, l.3, l.4, l.5, l.6, l.7],
-            ).map_err(|e| format!("Gagal memasukkan log inventaris default {}: {}", l.0, e))?;
+            for l in default_logs {
+                conn.execute(
+                    "INSERT INTO inventory_logs (id, product_id, date, type, qty, cost, reference, warehouse_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                    rusqlite::params![l.0, l.1, l.2, l.3, l.4, l.5, l.6, l.7],
+                ).map_err(|e| format!("Gagal memasukkan log inventaris default {}: {}", l.0, e))?;
+            }
         }
-    }
 
-    // 6. Cek & Seed Fixed Assets
-    let count_assets: i64 = conn
-        .query_row("SELECT COUNT(*) FROM fixed_assets", [], |r| r.get(0))
-        .map_err(|e| format!("Gagal membaca count fixed assets: {}", e))?;
+        // 6. Cek & Seed Fixed Assets
+        let count_assets: i64 = conn
+            .query_row("SELECT COUNT(*) FROM fixed_assets", [], |r| r.get(0))
+            .map_err(|e| format!("Gagal membaca count fixed assets: {}", e))?;
 
-    if count_assets == 0 {
-        let default_assets = vec![
-            (
-                "fa-01",
-                "Mesin Espresso La Marzocco",
-                "2026-01-10",
-                15000000.0,
-                5.0,
-                3000000.0,
-                1000000.0,
-                0,
-            ),
-            (
-                "fa-02",
-                "iPad Pro Kasir & Stand",
-                "2026-03-15",
-                6000000.0,
-                3.0,
-                600000.0,
-                450000.0,
-                0,
-            ),
-        ];
+        if count_assets == 0 {
+            let default_assets = vec![
+                (
+                    "fa-01",
+                    "Mesin Espresso La Marzocco",
+                    "2026-01-10",
+                    15000000.0,
+                    5.0,
+                    3000000.0,
+                    1000000.0,
+                    0,
+                ),
+                (
+                    "fa-02",
+                    "iPad Pro Kasir & Stand",
+                    "2026-03-15",
+                    6000000.0,
+                    3.0,
+                    600000.0,
+                    450000.0,
+                    0,
+                ),
+            ];
 
-        for a in default_assets {
-            conn.execute(
-                "INSERT INTO fixed_assets (id, name, purchase_date, cost, useful_life_years, salvage_value, accumulated_depreciation, is_fully_depreciated) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-                rusqlite::params![a.0, a.1, a.2, a.3, a.4, a.5, a.6, a.7],
-            ).map_err(|e| format!("Gagal memasukkan aset tetap default {}: {}", a.0, e))?;
+            for a in default_assets {
+                conn.execute(
+                    "INSERT INTO fixed_assets (id, name, purchase_date, cost, useful_life_years, salvage_value, accumulated_depreciation, is_fully_depreciated) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                    rusqlite::params![a.0, a.1, a.2, a.3, a.4, a.5, a.6, a.7],
+                ).map_err(|e| format!("Gagal memasukkan aset tetap default {}: {}", a.0, e))?;
+            }
         }
     }
 
