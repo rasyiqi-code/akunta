@@ -15,8 +15,9 @@ for:
       WIN_SIGN_URL: ''
     install:
       - ps: |
-          npx @tauri-apps/cli --version
+          appveyor-retry choco install rustup.install --no-progress
           rustup default stable-msvc
+          npx @tauri-apps/cli --version
       - cmd: npm ci
     build_script:
       - cmd: npm run tauri build
