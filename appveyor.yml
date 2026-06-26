@@ -21,7 +21,7 @@ for:
           rustup default stable-msvc 2>&1
       - cmd: npm ci
     build_script:
-      - cmd: npm run tauri build
+      - ps: npm run tauri build
     artifacts:
       - path: src-tauri\target\release\bundle\msi\*.msi
         name: installer
