@@ -16,6 +16,8 @@ for:
     install:
       - ps: |
           appveyor-retry choco install rustup.install --no-progress
+          refreshenv
+          $env:Path += ";$env:USERPROFILE\.cargo\bin"
           rustup default stable-msvc
           npx @tauri-apps/cli --version
       - cmd: npm ci
