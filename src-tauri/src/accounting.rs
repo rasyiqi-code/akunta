@@ -1,12 +1,12 @@
 use rusqlite::{params, Connection};
 use crate::{
-    SalesDocument, PurchaseDocument, Warehouse, StockTakeOrder, FixedAssetAdjustment
+    SalesDocument, PurchaseDocument, Warehouse, StockTakeOrder, FixedAssetAdjustment, Contact
 };
 
 // Ambil semua dokumen penjualan beserta itemnya
 pub fn get_sales_documents(conn: &Connection) -> Result<Vec<SalesDocument>, String> {
     let mut stmt = conn.prepare(
-        "SELECT id, date, contact_id, type, status, reference_id, total_amount, dp_applied, due_date FROM sales_documents ORDER BY date DESC"
+        "SELECT id, date, contact_id, type, status, reference_id, total_amount, ppn_amount, grand_total, dp_applied, due_date FROM sales_documents ORDER BY date DESC"
     ).map_err(|e| e.to_string())?;
 
     let doc_iter = stmt
@@ -19,9 +19,11 @@ pub fn get_sales_documents(conn: &Connection) -> Result<Vec<SalesDocument>, Stri
                 status: row.get(4)?,
                 reference_id: row.get(5)?,
                 total_amount: row.get(6)?,
-                dp_applied: row.get(7)?,
+                ppn_amount: row.get(7)?,
+                grand_total: row.get(8)?,
+                dp_applied: row.get(9)?,
                 items: None,
-                due_date: row.get(8)?,
+                due_date: row.get(10)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -61,7 +63,9 @@ pub fn get_sales_documents(conn: &Connection) -> Result<Vec<SalesDocument>, Stri
 }
 
 // Buat Dokumen Penjualan Baru (jika INVOICE, buat Jurnal Otomatis & Mutasi Persediaan)
-pub fn create_sales_document(conn: &Connection, doc: SalesDocument) -> Result<String, String> {
+pub fn create_sales_document(conn: &mut Connection, doc: SalesDocument) -> Result<String, String> {
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
     let due_date_val = match &doc.due_date {
         Some(d) if !d.is_empty() => d.clone(),
         _ => {
@@ -75,15 +79,15 @@ pub fn create_sales_document(conn: &Connection, doc: SalesDocument) -> Result<St
     };
 
     // 1. Simpan dokumen utama
-    conn.execute(
-        "INSERT INTO sales_documents (id, date, contact_id, type, status, reference_id, total_amount, dp_applied, due_date) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-        params![doc.id, doc.date, doc.contact_id, doc.doc_type, doc.status, doc.reference_id, doc.total_amount, doc.dp_applied, due_date_val],
+    tx.execute(
+        "INSERT INTO sales_documents (id, date, contact_id, type, status, reference_id, total_amount, ppn_amount, grand_total, dp_applied, due_date) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        params![doc.id, doc.date, doc.contact_id, doc.doc_type, doc.status, doc.reference_id, doc.total_amount, doc.ppn_amount, doc.grand_total, doc.dp_applied, due_date_val],
     ).map_err(|e| e.to_string())?;
 
     // 2. Simpan items
     if let Some(items) = &doc.items {
         for item in items {
-            conn.execute(
+            tx.execute(
                 "INSERT INTO sales_document_items (document_id, product_id, qty, price, discount) VALUES (?1, ?2, ?3, ?4, ?5)",
                 params![doc.id, item.product_id, item.qty, item.price, item.discount],
             ).map_err(|e| e.to_string())?;
@@ -94,22 +98,14 @@ pub fn create_sales_document(conn: &Connection, doc: SalesDocument) -> Result<St
     if doc.doc_type == "INVOICE" {
         // A. Update status dokumen referensi (misal pesanan/pengiriman terkait diset COMPLETED)
         if let Some(ref_id) = &doc.reference_id {
-            let _ = conn.execute(
+            let _ = tx.execute(
                 "UPDATE sales_documents SET status = 'COMPLETED' WHERE id = ?1",
                 params![ref_id],
             );
         }
 
         // B. Buat Jurnal Double-Entry yang seimbang
-        // Akun:
-        // - Kas Utama (1101) atau Bank BCA (1102) -> Debit (Total Penjualan + PPN)
-        // - Piutang Usaha (1104) -> Debit jika kredit/piutang
-        // - Pendapatan Penjualan (4101) -> Kredit (Total Penjualan)
-        // - PPN Keluaran (2103) -> Kredit (jika ada PPN, anggap 11%)
-        // - HPP (5101) -> Debit
-        // - Persediaan (1105) -> Kredit
-
-        let has_ppn = true; // default untuk simulasi pajak PPN Keluaran
+        let has_ppn = true;
         let ppn_rate = 0.11;
         let dpp = doc.total_amount;
         let ppn_amount = if has_ppn { dpp * ppn_rate } else { 0.0 };
@@ -118,30 +114,26 @@ pub fn create_sales_document(conn: &Connection, doc: SalesDocument) -> Result<St
         let journal_id = format!("JRN-SLS-{}", doc.id);
         let description = format!("Faktur Penjualan No. {}", doc.id);
 
-        conn.execute(
+        tx.execute(
             "INSERT INTO journals (id, date, description, reference, is_anomaly) VALUES (?1, ?2, ?3, ?4, 0)",
             params![journal_id, doc.date, description, doc.id],
         ).map_err(|e| e.to_string())?;
 
-        // Debit: Kas atau Piutang
-        // Untuk demo, jika contact_id adalah 'c-01' (Umum / Tunai), masuk ke Kas Utama (1101), selain itu Piutang Usaha (1104)
         let is_cash = doc.contact_id == "c-01";
         let debit_account = if is_cash { "1101" } else { "1104" };
 
-        conn.execute(
+        tx.execute(
             "INSERT INTO journal_lines (journal_id, account_code, debit, credit) VALUES (?1, ?2, ?3, 0.0)",
             params![journal_id, debit_account, grand_total],
         ).map_err(|e| e.to_string())?;
 
-        // Kredit: Pendapatan Penjualan
-        conn.execute(
+        tx.execute(
             "INSERT INTO journal_lines (journal_id, account_code, debit, credit) VALUES (?1, ?2, 0.0, ?3)",
             params![journal_id, "4101", dpp],
         ).map_err(|e| e.to_string())?;
 
-        // Kredit: PPN Keluaran (jika ada)
         if has_ppn {
-            conn.execute(
+            tx.execute(
                 "INSERT INTO journal_lines (journal_id, account_code, debit, credit) VALUES (?1, ?2, 0.0, ?3)",
                 params![journal_id, "2103", ppn_amount],
             ).map_err(|e| e.to_string())?;
@@ -151,8 +143,7 @@ pub fn create_sales_document(conn: &Connection, doc: SalesDocument) -> Result<St
         let mut total_cost = 0.0;
         if let Some(items) = &doc.items {
             for item in items {
-                // Ambil info produk (average_cost & current qty)
-                let mut prod_stmt = conn
+                let mut prod_stmt = tx
                     .prepare("SELECT average_cost, stock_qty FROM products WHERE id = ?1")
                     .map_err(|e| e.to_string())?;
 
@@ -163,46 +154,42 @@ pub fn create_sales_document(conn: &Connection, doc: SalesDocument) -> Result<St
                 let item_cost = avg_cost * item.qty;
                 total_cost += item_cost;
 
-                // Kurangi stok produk
                 let new_qty = current_qty - item.qty;
-                conn.execute(
+                tx.execute(
                     "UPDATE products SET stock_qty = ?1 WHERE id = ?2",
                     params![new_qty, item.product_id],
                 )
                 .map_err(|e| e.to_string())?;
 
-                // ID log unik per item: gabungan doc.id + product_id
                 let log_id = format!("LOG-OUT-{}-{}", doc.id, item.product_id);
-                conn.execute(
+                tx.execute(
                     "INSERT INTO inventory_logs (id, product_id, date, type, qty, cost, reference, warehouse_id) VALUES (?1, ?2, ?3, 'KELUAR', ?4, ?5, ?6, 'w-01')",
                     params![log_id, item.product_id, doc.date, item.qty, avg_cost, doc.id],
                 ).map_err(|e| e.to_string())?;
             }
         }
 
-        // Jurnal HPP vs Persediaan
         if total_cost > 0.0 {
-            // Debit: HPP (5101)
-            conn.execute(
+            tx.execute(
                 "INSERT INTO journal_lines (journal_id, account_code, debit, credit) VALUES (?1, '5101', ?2, 0.0)",
                 params![journal_id, total_cost],
             ).map_err(|e| e.to_string())?;
 
-            // Kredit: Persediaan Barang Dagang (1105)
-            conn.execute(
+            tx.execute(
                 "INSERT INTO journal_lines (journal_id, account_code, debit, credit) VALUES (?1, '1105', 0.0, ?2)",
                 params![journal_id, total_cost],
             ).map_err(|e| e.to_string())?;
         }
     }
 
+    tx.commit().map_err(|e| e.to_string())?;
     Ok("Dokumen penjualan berhasil disimpan".to_string())
 }
 
 // Ambil semua dokumen pembelian beserta itemnya
 pub fn get_purchase_documents(conn: &Connection) -> Result<Vec<PurchaseDocument>, String> {
     let mut stmt = conn.prepare(
-        "SELECT id, date, contact_id, type, status, reference_id, total_amount, dp_applied, due_date FROM purchase_documents ORDER BY date DESC"
+        "SELECT id, date, contact_id, type, status, reference_id, total_amount, ppn_amount, grand_total, dp_applied, due_date FROM purchase_documents ORDER BY date DESC"
     ).map_err(|e| e.to_string())?;
 
     let doc_iter = stmt
@@ -215,9 +202,11 @@ pub fn get_purchase_documents(conn: &Connection) -> Result<Vec<PurchaseDocument>
                 status: row.get(4)?,
                 reference_id: row.get(5)?,
                 total_amount: row.get(6)?,
-                dp_applied: row.get(7)?,
+                ppn_amount: row.get(7)?,
+                grand_total: row.get(8)?,
+                dp_applied: row.get(9)?,
                 items: None,
-                due_date: row.get(8)?,
+                due_date: row.get(10)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -257,9 +246,11 @@ pub fn get_purchase_documents(conn: &Connection) -> Result<Vec<PurchaseDocument>
 
 // Buat Dokumen Pembelian Baru (jika INVOICE, buat Jurnal Otomatis & Mutasi Persediaan)
 pub fn create_purchase_document(
-    conn: &Connection,
+    conn: &mut Connection,
     doc: PurchaseDocument,
 ) -> Result<String, String> {
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
     let due_date_val = match &doc.due_date {
         Some(d) if !d.is_empty() => d.clone(),
         _ => {
@@ -272,14 +263,14 @@ pub fn create_purchase_document(
         }
     };
 
-    conn.execute(
-        "INSERT INTO purchase_documents (id, date, contact_id, type, status, reference_id, total_amount, dp_applied, due_date) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-        params![doc.id, doc.date, doc.contact_id, doc.doc_type, doc.status, doc.reference_id, doc.total_amount, doc.dp_applied, due_date_val],
+    tx.execute(
+        "INSERT INTO purchase_documents (id, date, contact_id, type, status, reference_id, total_amount, ppn_amount, grand_total, dp_applied, due_date) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        params![doc.id, doc.date, doc.contact_id, doc.doc_type, doc.status, doc.reference_id, doc.total_amount, doc.ppn_amount, doc.grand_total, doc.dp_applied, due_date_val],
     ).map_err(|e| e.to_string())?;
 
     if let Some(items) = &doc.items {
         for item in items {
-            conn.execute(
+            tx.execute(
                 "INSERT INTO purchase_document_items (document_id, product_id, qty, price, discount) VALUES (?1, ?2, ?3, ?4, ?5)",
                 params![doc.id, item.product_id, item.qty, item.price, item.discount],
             ).map_err(|e| e.to_string())?;
@@ -288,16 +279,11 @@ pub fn create_purchase_document(
 
     if doc.doc_type == "INVOICE" {
         if let Some(ref_id) = &doc.reference_id {
-            let _ = conn.execute(
+            let _ = tx.execute(
                 "UPDATE purchase_documents SET status = 'COMPLETED' WHERE id = ?1",
                 params![ref_id],
             );
         }
-
-        // Jurnal Otomatis Pembelian:
-        // - Persediaan Barang Dagang (1105) -> Debit (Dpp)
-        // - PPN Masukan (1106) -> Debit (PPN 11%)
-        // - Utang Usaha (2101) atau Bank BCA/Kas (1102/1101) -> Kredit (Grand Total)
 
         let has_ppn = true;
         let ppn_rate = 0.11;
@@ -308,38 +294,34 @@ pub fn create_purchase_document(
         let journal_id = format!("JRN-PUR-{}", doc.id);
         let description = format!("Faktur Pembelian No. {}", doc.id);
 
-        conn.execute(
+        tx.execute(
             "INSERT INTO journals (id, date, description, reference, is_anomaly) VALUES (?1, ?2, ?3, ?4, 0)",
             params![journal_id, doc.date, description, doc.id],
         ).map_err(|e| e.to_string())?;
 
-        // Debit: Persediaan Barang Dagang (1105)
-        conn.execute(
+        tx.execute(
             "INSERT INTO journal_lines (journal_id, account_code, debit, credit) VALUES (?1, '1105', ?2, 0.0)",
             params![journal_id, dpp],
         ).map_err(|e| e.to_string())?;
 
-        // Debit: PPN Masukan (1106) jika ada
         if has_ppn {
-            conn.execute(
+            tx.execute(
                 "INSERT INTO journal_lines (journal_id, account_code, debit, credit) VALUES (?1, '1106', ?2, 0.0)",
                 params![journal_id, ppn_amount],
             ).map_err(|e| e.to_string())?;
         }
 
-        // Kredit: Utang Usaha (2101) atau Kas (1101)
-        let is_cash = doc.contact_id == "c-01"; // contoh tunai
+        let is_cash = doc.contact_id == "c-01";
         let credit_account = if is_cash { "1101" } else { "2101" };
 
-        conn.execute(
+        tx.execute(
             "INSERT INTO journal_lines (journal_id, account_code, debit, credit) VALUES (?1, ?2, 0.0, ?3)",
             params![journal_id, credit_account, grand_total],
         ).map_err(|e| e.to_string())?;
 
-        // Update Stok Produk & Hitung Average Cost
         if let Some(items) = &doc.items {
             for item in items {
-                let mut prod_stmt = conn
+                let mut prod_stmt = tx
                     .prepare("SELECT average_cost, stock_qty FROM products WHERE id = ?1")
                     .map_err(|e| e.to_string())?;
 
@@ -347,7 +329,6 @@ pub fn create_purchase_document(
                     .query_row([&item.product_id], |row| Ok((row.get(0)?, row.get(1)?)))
                     .map_err(|e| e.to_string())?;
 
-                // Hitung Moving Average Cost baru
                 let new_qty = old_qty + item.qty;
                 let new_avg = if new_qty > 0.0 {
                     ((old_qty * old_avg) + (item.qty * item.price)) / new_qty
@@ -355,15 +336,14 @@ pub fn create_purchase_document(
                     item.price
                 };
 
-                conn.execute(
+                tx.execute(
                     "UPDATE products SET stock_qty = ?1, average_cost = ?2 WHERE id = ?3",
                     params![new_qty, new_avg, item.product_id],
                 )
                 .map_err(|e| e.to_string())?;
 
-                // ID log unik per item: gabungan doc.id + product_id
                 let log_id = format!("LOG-IN-{}-{}", doc.id, item.product_id);
-                conn.execute(
+                tx.execute(
                     "INSERT INTO inventory_logs (id, product_id, date, type, qty, cost, reference, warehouse_id) VALUES (?1, ?2, ?3, 'MASUK', ?4, ?5, ?6, 'w-01')",
                     params![log_id, item.product_id, doc.date, item.qty, item.price, doc.id],
                 ).map_err(|e| e.to_string())?;
@@ -371,6 +351,7 @@ pub fn create_purchase_document(
         }
     }
 
+    tx.commit().map_err(|e| e.to_string())?;
     Ok("Dokumen pembelian berhasil disimpan".to_string())
 }
 
@@ -467,12 +448,8 @@ pub fn create_stock_take(conn: &Connection, order: StockTakeOrder) -> Result<Str
                 )
                 .map_err(|e| e.to_string())?;
 
-                let log_type = if item.diff_qty > 0.0 {
-                    "ADJUSTMENT"
-                } else {
-                    "ADJUSTMENT"
-                };
-                let log_id = format!("LOG-ADJ-{}", order.id);
+                let log_type = "ADJUSTMENT";
+                let log_id = format!("LOG-ADJ-{}-{}", order.id, item.product_id);
                 conn.execute(
                     "INSERT INTO inventory_logs (id, product_id, date, type, qty, cost, reference, warehouse_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'w-01')",
                     params![log_id, item.product_id, order.date, log_type, item.diff_qty, item.cost, order.id],
@@ -610,6 +587,71 @@ pub fn dispose_fixed_asset(
     ).map_err(|e| e.to_string())?;
 
     Ok("Aset tetap berhasil dilepas".to_string())
+}
+
+// Hapus Dokumen Penjualan beserta item dan jurnal terkait
+pub fn delete_sales_document(conn: &Connection, doc_id: &str) -> Result<(), String> {
+    // Hapus jurnal yang mereferensi dokumen ini
+    let _ = conn.execute("DELETE FROM journal_lines WHERE journal_id IN (SELECT id FROM journals WHERE reference = ?1)", params![doc_id]);
+    let _ = conn.execute("DELETE FROM journals WHERE reference = ?1", params![doc_id]);
+    // Hapus item dokumen, lalu dokumen
+    conn.execute("DELETE FROM sales_document_items WHERE document_id = ?1", params![doc_id])
+        .map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM sales_documents WHERE id = ?1", params![doc_id])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// Hapus Dokumen Pembelian beserta item dan jurnal terkait
+pub fn delete_purchase_document(conn: &Connection, doc_id: &str) -> Result<(), String> {
+    let _ = conn.execute("DELETE FROM journal_lines WHERE journal_id IN (SELECT id FROM journals WHERE reference = ?1)", params![doc_id]);
+    let _ = conn.execute("DELETE FROM journals WHERE reference = ?1", params![doc_id]);
+    conn.execute("DELETE FROM purchase_document_items WHERE document_id = ?1", params![doc_id])
+        .map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM purchase_documents WHERE id = ?1", params![doc_id])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// Update kontak
+pub fn update_contact(conn: &Connection, contact: &Contact) -> Result<(), String> {
+    conn.execute(
+        "UPDATE contacts SET name = ?1, type = ?2 WHERE id = ?3",
+        params![contact.name, contact.contact_type, contact.id],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// Hapus kontak
+pub fn delete_contact(conn: &Connection, contact_id: &str) -> Result<(), String> {
+    conn.execute("DELETE FROM contacts WHERE id = ?1", params![contact_id])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// Tambah gudang
+pub fn add_warehouse(conn: &Connection, warehouse: &Warehouse) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO warehouses (id, name) VALUES (?1, ?2)",
+        params![warehouse.id, warehouse.name],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// Update gudang
+pub fn update_warehouse(conn: &Connection, warehouse: &Warehouse) -> Result<(), String> {
+    conn.execute(
+        "UPDATE warehouses SET name = ?1 WHERE id = ?2",
+        params![warehouse.name, warehouse.id],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// Hapus gudang
+pub fn delete_warehouse(conn: &Connection, warehouse_id: &str) -> Result<(), String> {
+    conn.execute("DELETE FROM warehouses WHERE id = ?1", params![warehouse_id])
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 // Revaluasi Aset Tetap (Penyesuaian Nilai Buku)

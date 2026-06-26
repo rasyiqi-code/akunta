@@ -203,3 +203,33 @@ pub fn adjust_fixed_asset_rust(state: State<'_, DbState>, adj_json: String) -> R
     let adj: FixedAssetAdjustment = serde_json::from_str(&adj_json).map_err(|e| e.to_string())?;
     accounting::adjust_fixed_asset(&conn, adj)
 }
+
+#[tauri::command]
+pub fn update_fixed_asset_rust(
+    app_handle: tauri::AppHandle,
+    state: State<DbState>,
+    asset_json: String,
+) -> Result<(), String> {
+    let asset: FixedAsset = serde_json::from_str(&asset_json)
+        .map_err(|e| format!("Gagal parsing aset: {}", e))?;
+    let conn = state.0.lock().unwrap();
+    conn.execute(
+        "UPDATE fixed_assets SET name = ?1, purchase_date = ?2, cost = ?3, useful_life_years = ?4, salvage_value = ?5 WHERE id = ?6",
+        rusqlite::params![asset.name, asset.purchase_date, asset.cost, asset.useful_life_years, asset.salvage_value, asset.id],
+    ).map_err(|e| e.to_string())?;
+    let _ = app_handle.emit("db-update", "assets");
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_fixed_asset_rust(
+    app_handle: tauri::AppHandle,
+    state: State<DbState>,
+    asset_id: String,
+) -> Result<(), String> {
+    let conn = state.0.lock().unwrap();
+    conn.execute("DELETE FROM fixed_assets WHERE id = ?1", rusqlite::params![asset_id])
+        .map_err(|e| e.to_string())?;
+    let _ = app_handle.emit("db-update", "assets");
+    Ok(())
+}

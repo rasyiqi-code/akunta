@@ -22,6 +22,25 @@ fn detect_anomaly_rules(entry: &JournalEntry) -> bool {
 }
 
 #[tauri::command]
+pub fn upsert_account_rust(state: State<'_, DbState>, account_json: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let account: Account = serde_json::from_str(&account_json).map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT OR REPLACE INTO accounts (code, name, type, normal_balance) VALUES (?1, ?2, ?3, ?4)",
+        rusqlite::params![account.code, account.name, account.acc_type, account.normal_balance],
+    ).map_err(|e| format!("Gagal menyimpan akun: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_account_rust(state: State<'_, DbState>, code: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM accounts WHERE code = ?1", [&code])
+        .map_err(|e| format!("Gagal menghapus akun: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
 pub fn get_accounts_rust(state: State<DbState>) -> Result<String, String> {
     let conn = state.0.lock().unwrap();
     let mut stmt = conn.prepare("SELECT code, name, type, normal_balance FROM accounts").map_err(|e| e.to_string())?;
@@ -41,6 +60,16 @@ pub fn get_accounts_rust(state: State<DbState>) -> Result<String, String> {
     }
     
     serde_json::to_string(&accounts).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_journal_rust(state: State<'_, DbState>, journal_id: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM journal_lines WHERE journal_id = ?1", [&journal_id])
+        .map_err(|e| format!("Gagal menghapus lines jurnal: {}", e))?;
+    conn.execute("DELETE FROM journals WHERE id = ?1", [&journal_id])
+        .map_err(|e| format!("Gagal menghapus jurnal: {}", e))?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -528,12 +557,12 @@ pub fn generate_cash_flow_rust(state: State<DbState>) -> Result<String, String> 
     let mut operating_payments = Vec::new();
     let mut total_operating = 0.0;
     
-    let investing_receipts = Vec::new();
+    let mut investing_receipts = Vec::new();
     let mut investing_payments = Vec::new();
     let mut total_investing = 0.0;
     
     let mut financing_receipts = Vec::new();
-    let financing_payments = Vec::new();
+    let mut financing_payments = Vec::new();
     let mut total_financing = 0.0;
     
     for row in cash_lines_iter {
@@ -558,89 +587,114 @@ pub fn generate_cash_flow_rust(state: State<DbState>) -> Result<String, String> 
             offsets.push(o.map_err(|e| e.to_string())?);
         }
         
+        // Helper untuk klasifikasi akun offset ke kategori arus kas
+        let classify_offset = |acc_code: &str| -> &'static str {
+            if acc_code == "1104" || acc_code == "1105" {
+                "OPERATING"
+            } else if acc_code.starts_with("12") {
+                "INVESTING"
+            } else if acc_code == "2101" {
+                "OPERATING"
+            } else {
+                "OTHER"
+            }
+        };
+
+        let classify_by_type = |acc_type: &str| -> &'static str {
+            match acc_type {
+                "PENDAPATAN" => "OPERATING",
+                "BEBAN" => "OPERATING",
+                "EKUITAS" => "FINANCING",
+                "KEWAJIBAN" => "OPERATING",
+                _ => "OPERATING",
+            }
+        };
+
         if cash_line.debit > 0.0 {
             let amount = cash_line.debit;
-            
-            if let Some(offset) = offsets.first() {
+            let mut category = "OPERATING";
+
+            for offset in &offsets {
                 let acc_type: String = conn.query_row(
                     "SELECT type FROM accounts WHERE code = ?1",
                     [&offset.account_code],
                     |row| row.get(0)
                 ).unwrap_or_else(|_| "LAIN".to_string());
-                
-                if acc_type == "PENDAPATAN" || offset.account_code == "1104" {
-                    total_operating += amount;
-                    operating_receipts.push(CashFlowItem {
-                        description: cash_line.description.clone(),
-                        amount,
-                    });
-                } else if acc_type == "EKUITAS" {
+
+                let cat = classify_by_type(&acc_type);
+                if cat == "FINANCING" {
+                    category = "FINANCING";
+                } else if cat == "INVESTING" && category != "FINANCING" {
+                    category = "INVESTING";
+                }
+            }
+
+            match category {
+                "FINANCING" => {
                     total_financing += amount;
                     financing_receipts.push(CashFlowItem {
                         description: cash_line.description.clone(),
                         amount,
                     });
-                } else if acc_type == "KEWAJIBAN" {
-                    total_financing += amount;
-                    financing_receipts.push(CashFlowItem {
+                }
+                "INVESTING" => {
+                    total_investing += amount;
+                    investing_receipts.push(CashFlowItem {
                         description: cash_line.description.clone(),
                         amount,
                     });
-                } else {
+                }
+                _ => {
                     total_operating += amount;
                     operating_receipts.push(CashFlowItem {
                         description: cash_line.description.clone(),
                         amount,
                     });
                 }
-            } else {
-                total_operating += amount;
-                operating_receipts.push(CashFlowItem {
-                    description: cash_line.description.clone(),
-                    amount,
-                });
             }
         } else if cash_line.credit > 0.0 {
             let amount = cash_line.credit;
-            
-            if let Some(offset) = offsets.first() {
+            let mut category = "OPERATING";
+
+            for offset in &offsets {
+                let code_cat = classify_offset(&offset.account_code);
                 let acc_type: String = conn.query_row(
                     "SELECT type FROM accounts WHERE code = ?1",
                     [&offset.account_code],
                     |row| row.get(0)
                 ).unwrap_or_else(|_| "LAIN".to_string());
-                
-                if acc_type == "BEBAN" {
-                    total_operating -= amount;
-                    operating_payments.push(CashFlowItem {
-                        description: cash_line.description.clone(),
-                        amount,
-                    });
-                } else if offset.account_code == "1105" || offset.account_code == "2101" {
-                    total_operating -= amount;
-                    operating_payments.push(CashFlowItem {
-                        description: cash_line.description.clone(),
-                        amount,
-                    });
-                } else if offset.account_code.starts_with("12") {
+                let type_cat = classify_by_type(&acc_type);
+
+                let cat = if code_cat != "OTHER" { code_cat } else { type_cat };
+                if cat == "INVESTING" {
+                    category = "INVESTING";
+                } else if cat == "FINANCING" && category != "INVESTING" {
+                    category = "FINANCING";
+                }
+            }
+
+            match category {
+                "INVESTING" => {
                     total_investing -= amount;
                     investing_payments.push(CashFlowItem {
                         description: cash_line.description.clone(),
                         amount,
                     });
-                } else {
+                }
+                "FINANCING" => {
+                    total_financing -= amount;
+                    financing_payments.push(CashFlowItem {
+                        description: cash_line.description.clone(),
+                        amount,
+                    });
+                }
+                _ => {
                     total_operating -= amount;
                     operating_payments.push(CashFlowItem {
                         description: cash_line.description.clone(),
                         amount,
                     });
                 }
-            } else {
-                total_operating -= amount;
-                operating_payments.push(CashFlowItem {
-                    description: cash_line.description.clone(),
-                    amount,
-                });
             }
         }
     }
@@ -703,7 +757,14 @@ pub fn close_books_rust(
     let mut total_debit = 0.0;
     let mut total_credit = 0.0;
     
-    // 2. Ambil saldo akun pendapatan dan beban sampai close_date
+    // 2. Cari tahu jurnal penutup terakhir yang sudah ada (jika ada)
+    let last_close_date: String = conn.query_row(
+        "SELECT value FROM settings WHERE key = 'lock_date'",
+        [],
+        |row| row.get(0)
+    ).unwrap_or_default();
+
+    // 2b. Ambil saldo akun pendapatan dan beban sejak tutup buku terakhir sampai close_date
     {
         let mut stmt = conn.prepare(
             r#"SELECT a.code, a.type, a.normal_balance,
@@ -711,11 +772,11 @@ pub fn close_books_rust(
                FROM accounts a
                JOIN journal_lines jl ON a.code = jl.account_code
                JOIN journals j ON jl.journal_id = j.id
-               WHERE a.type IN ('PENDAPATAN', 'BEBAN') AND j.date <= ?1
+               WHERE a.type IN ('PENDAPATAN', 'BEBAN') AND j.date > ?1 AND j.date <= ?2
                GROUP BY a.code"#
         ).map_err(|e| e.to_string())?;
         
-        let rows = stmt.query_map([&close_date], |row| {
+        let rows = stmt.query_map(rusqlite::params![last_close_date, close_date], |row| {
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
@@ -724,7 +785,7 @@ pub fn close_books_rust(
                 row.get::<_, f64>(4)?,
             ))
         }).map_err(|e| e.to_string())?;
-        
+
         for r in rows {
             let (code, acc_type, normal_balance, debit, credit) = r.map_err(|e| e.to_string())?;
             
@@ -739,7 +800,6 @@ pub fn close_books_rust(
             }
             
             if acc_type == "PENDAPATAN" {
-                // Debit pendapatan untuk menutupnya (normal balance K)
                 lines.push(JournalLine {
                     account_code: code,
                     debit: balance,
@@ -747,7 +807,6 @@ pub fn close_books_rust(
                 });
                 total_debit += balance;
             } else if acc_type == "BEBAN" {
-                // Kredit beban untuk menutupnya (normal balance D)
                 lines.push(JournalLine {
                     account_code: code,
                     debit: 0.0,

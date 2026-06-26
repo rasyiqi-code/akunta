@@ -62,6 +62,36 @@ pub fn add_product_rust(
 }
 
 #[tauri::command]
+pub fn update_product_rust(
+    app_handle: tauri::AppHandle,
+    state: State<DbState>,
+    product_json: String,
+) -> Result<(), String> {
+    let product: Product = serde_json::from_str(&product_json)
+        .map_err(|e| format!("Gagal parsing produk: {}", e))?;
+    let conn = state.0.lock().unwrap();
+    conn.execute(
+        "UPDATE products SET name = ?1, sku = ?2, selling_price = ?3 WHERE id = ?4",
+        rusqlite::params![product.name, product.sku, product.selling_price, product.id],
+    ).map_err(|e| e.to_string())?;
+    let _ = app_handle.emit("db-update", "products");
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_product_rust(
+    app_handle: tauri::AppHandle,
+    state: State<DbState>,
+    product_id: String,
+) -> Result<(), String> {
+    let conn = state.0.lock().unwrap();
+    conn.execute("DELETE FROM products WHERE id = ?1", rusqlite::params![product_id])
+        .map_err(|e| e.to_string())?;
+    let _ = app_handle.emit("db-update", "products");
+    Ok(())
+}
+
+#[tauri::command]
 pub fn get_inventory_logs_rust(state: State<DbState>) -> Result<String, String> {
     let conn = state.0.lock().unwrap();
     let mut stmt = conn.prepare("SELECT id, product_id, date, type, qty, cost, reference, warehouse_id FROM inventory_logs ORDER BY date DESC, id DESC").map_err(|e| e.to_string())?;
@@ -347,9 +377,9 @@ pub fn get_sales_documents_rust(state: State<'_, DbState>) -> Result<String, Str
 
 #[tauri::command]
 pub fn create_sales_document_rust(state: State<'_, DbState>, doc_json: String) -> Result<String, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let mut conn = state.0.lock().map_err(|e| e.to_string())?;
     let doc: SalesDocument = serde_json::from_str(&doc_json).map_err(|e| e.to_string())?;
-    accounting::create_sales_document(&conn, doc)
+    accounting::create_sales_document(&mut *conn, doc)
 }
 
 #[tauri::command]
@@ -361,9 +391,43 @@ pub fn get_purchase_documents_rust(state: State<'_, DbState>) -> Result<String, 
 
 #[tauri::command]
 pub fn create_purchase_document_rust(state: State<'_, DbState>, doc_json: String) -> Result<String, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let mut conn = state.0.lock().map_err(|e| e.to_string())?;
     let doc: PurchaseDocument = serde_json::from_str(&doc_json).map_err(|e| e.to_string())?;
-    accounting::create_purchase_document(&conn, doc)
+    accounting::create_purchase_document(&mut *conn, doc)
+}
+
+#[tauri::command]
+pub fn delete_sales_document_rust(state: State<'_, DbState>, doc_id: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    accounting::delete_sales_document(&conn, &doc_id)
+}
+
+#[tauri::command]
+pub fn delete_purchase_document_rust(state: State<'_, DbState>, doc_id: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    accounting::delete_purchase_document(&conn, &doc_id)
+}
+
+#[tauri::command]
+pub fn add_warehouse_rust(state: State<'_, DbState>, warehouse_json: String) -> Result<(), String> {
+    let warehouse: Warehouse = serde_json::from_str(&warehouse_json)
+        .map_err(|e| format!("Gagal parsing gudang: {}", e))?;
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    accounting::add_warehouse(&conn, &warehouse)
+}
+
+#[tauri::command]
+pub fn update_warehouse_rust(state: State<'_, DbState>, warehouse_json: String) -> Result<(), String> {
+    let warehouse: Warehouse = serde_json::from_str(&warehouse_json)
+        .map_err(|e| format!("Gagal parsing gudang: {}", e))?;
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    accounting::update_warehouse(&conn, &warehouse)
+}
+
+#[tauri::command]
+pub fn delete_warehouse_rust(state: State<'_, DbState>, warehouse_id: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    accounting::delete_warehouse(&conn, &warehouse_id)
 }
 
 #[tauri::command]

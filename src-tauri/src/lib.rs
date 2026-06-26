@@ -90,13 +90,32 @@ pub fn run() {
             create_stock_take_rust,
             dispose_fixed_asset_rust,
             adjust_fixed_asset_rust,
+            update_fixed_asset_rust,
+            delete_fixed_asset_rust,
             get_contacts_rust,
             add_contact_rust,
+            update_contact_rust,
+            delete_contact_rust,
+            delete_sales_document_rust,
+            delete_purchase_document_rust,
+            add_warehouse_rust,
+            update_warehouse_rust,
+            delete_warehouse_rust,
             reset_database_rust,
             get_lock_date_rust,
             close_books_rust,
             generate_equity_statement_rust,
-            generate_aging_report_rust
+            generate_aging_report_rust,
+            get_gemini_api_key_rust,
+            get_gemini_api_url_rust,
+            get_gemini_model_rust,
+            set_setting_rust,
+            get_app_settings_rust,
+            upsert_account_rust,
+            delete_account_rust,
+            delete_journal_rust,
+            update_product_rust,
+            delete_product_rust
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

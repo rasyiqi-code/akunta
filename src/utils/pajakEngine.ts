@@ -71,18 +71,20 @@ export interface ReconciliationResult {
  * Merekonstruksi kecocokan mutasi bank secara native di Rust SQLite.
  */
 export async function reconcileBankStatement(
-  _journals: any[], // Dibiarkan sebagai parameter untuk kompatibilitas signature
+  _journals: any[],
   date: string,
   description: string,
   amount: number,
-  statementId: string // Menambahkan parameter ID agar Rust tahu entri mana yang diperbarui
+  statementId: string,
+  dryRun?: boolean
 ): Promise<ReconciliationResult> {
   try {
     const resultJson = await invoke<string>('reconcile_bank_statement_rust', {
       statementId,
       date,
       description,
-      amount
+      amount,
+      dryRun: dryRun ?? false
     });
     return JSON.parse(resultJson);
   } catch (err: any) {

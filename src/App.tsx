@@ -9,6 +9,7 @@ import { ChatInterface } from './components/AssistantMode/ChatInterface';
 import { LedgerDashboard } from './components/AccountantMode/LedgerDashboard';
 import { TitleBar } from './components/TitleBar';
 import { CommandMenu } from './components/CommandMenu';
+import { SettingsModal } from './components/SettingsModal';
 
 type ModuleTab = 'JURNAL' | 'BUKUBESAR' | 'PERSEDIAAN' | 'ASETTETAP' | 'LABARUGI' | 'NERACA' | 'PAJAK' | 'NERACASALDO' | 'ARUSKAS' | 'PENJUALAN' | 'PEMBELIAN' | 'EKUITAS' | 'AGING';
 
@@ -17,6 +18,7 @@ function App() {
   const [isDbReady, setIsDbReady] = useState(false);
   const [showPreviewPane, setShowPreviewPane] = useState(true);
   const [previewTab, setPreviewTab] = useState<'WARROOM' | 'CHAT'>('WARROOM');
+  const [showSettings, setShowSettings] = useState(false);
 
   // Inisialisasi Database
   useEffect(() => {
@@ -244,6 +246,15 @@ function App() {
                 <button 
                   className="btn btn-secondary"
                   style={{ padding: '3px 8px' }}
+                  onClick={() => setShowSettings(true)}
+                  title="Pengaturan AI & Profil"
+                >
+                  <Settings size={12} />
+                  <span>Pengaturan</span>
+                </button>
+                <button 
+                  className="btn btn-secondary"
+                  style={{ padding: '3px 8px' }}
                   onClick={() => setShowPreviewPane(!showPreviewPane)}
                   title="Toggle Asisten AI (Preview Pane)"
                 >
@@ -298,6 +309,14 @@ function App() {
 
         </div>
       </div>
+      <SettingsModal
+        show={showSettings}
+        onClose={() => setShowSettings(false)}
+        onSaved={() => {
+          const event = new CustomEvent('db-update');
+          window.dispatchEvent(event);
+        }}
+      />
       <CommandMenu activeTab={activeTab} setActiveTab={setActiveTab} />
     </div>
   );

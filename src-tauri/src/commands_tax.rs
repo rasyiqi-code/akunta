@@ -3,6 +3,14 @@ use tauri::Emitter;
 use crate::DbState;
 use crate::models::*;
 
+fn get_setting(conn: &rusqlite::Connection, key: &str, default: &str) -> String {
+    conn.query_row(
+        "SELECT value FROM settings WHERE key = ?1",
+        [key],
+        |row| row.get(0)
+    ).unwrap_or_else(|_| default.to_string())
+}
+
 fn rand_id() -> String {
     use rand::Rng;
     let mut rng = rand::thread_rng();
@@ -110,26 +118,37 @@ pub fn process_tax_rust(state: State<DbState>) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn generate_efaktur_csv_rust(transactions_json: String, tax_type: String) -> Result<String, String> {
+pub fn generate_efaktur_csv_rust(state: State<DbState>, transactions_json: String, tax_type: String) -> Result<String, String> {
+    let conn = state.0.lock().unwrap();
     let transactions: Vec<TaxTransaction> = serde_json::from_str(&transactions_json)
         .map_err(|e| format!("Gagal parsing data: {}", e))?;
         
     let filtered: Vec<&TaxTransaction> = transactions.iter().filter(|t| t.tax_type == tax_type).collect();
+    
+    // Ambil NPWP & nama dari settings, fallback ke dummy
+    let npwp_perusahaan = get_setting(&conn, "npwp_perusahaan", "00.000.000.0-000.000");
+    let npwp_supplier = get_setting(&conn, "npwp_supplier", "01.234.567.8-012.000");
+    let nama_perusahaan = get_setting(&conn, "nama_perusahaan", "Perusahaan UMKM");
+    let nama_supplier = get_setting(&conn, "nama_supplier", "Supplier Umum");
     
     // Header standard e-Faktur
     let mut csv = "FK,KD_AP,FG_PENGGANTI,NOMOR_FAKTUR,MASA_PAJAK,TAHUN_PAJAK,TANGGAL_FAKTUR,NPWP,NAMA,ALAMAT,JUMLAH_DPP,JUMLAH_PPN,JUMLAH_PPNBM,STATUS_APPROVAL,MEMO\n".to_string();
     
     for (idx, t) in filtered.iter().enumerate() {
         let no_faktur = format!("010.002-26.{:08}", idx + 1);
-        let npwp = if tax_type == "PPN_MASUKAN" { "01.234.567.8-012.000" } else { "99.999.999.9-999.000" };
-        let nama = if tax_type == "PPN_MASUKAN" { "Supplier Kopi Utama" } else { "Pelanggan Umum" };
+        let (npwp, nama) = if tax_type == "PPN_MASUKAN" {
+            (&npwp_supplier, &nama_supplier)
+        } else {
+            (&npwp_perusahaan, &nama_perusahaan)
+        };
         
-        // Memformat tanggal YYYY-MM-DD ke DD/MM/YYYY agar valid di e-Faktur DJP
         let formatted_date = format_date_djp(&t.date);
+        let masa_pajak = &t.date[5..7];
+        let tahun_pajak = &t.date[0..4];
         
         csv.push_str(&format!(
-            "FK,01,0,{},06,2026,{},{},{},Jakarta,{},{},0,APPROVED,{}\n",
-            no_faktur, formatted_date, npwp, nama, t.dpp, t.tax_amount, t.description
+            "FK,01,0,{},{},{},{},{},{},Jakarta,{},{},0,APPROVED,{}\n",
+            no_faktur, masa_pajak, tahun_pajak, formatted_date, npwp, nama, t.dpp, t.tax_amount, t.description
         ));
     }
     
@@ -198,6 +217,7 @@ pub fn reconcile_bank_statement_rust(
     date: String,
     description: String,
     amount: f64,
+    dry_run: Option<bool>,
 ) -> Result<String, String> {
     let mut conn = state.0.lock().unwrap();
     
@@ -288,8 +308,18 @@ pub fn reconcile_bank_statement_rust(
         };
         
         serde_json::to_string(&result).map_err(|e| e.to_string())
+    } else if dry_run.unwrap_or(false) {
+        // Dry run: jangan buat jurnal otomatis, beri tahu frontend
+        let result = ReconciliationResult {
+            matched: false,
+            matched_journal_id: None,
+            confidence_score: 0.0,
+            suggested_lines: None,
+            suggested_description: Some(format!("Rekonsiliasi Bank: {}", description)),
+        };
+        serde_json::to_string(&result).map_err(|e| e.to_string())
     } else {
-        // Buat jurnal penyesuaian otomatis
+        // Buat jurnal penyesuaian otomatis (hanya jika dry_run = false / tidak diset)
         let suggested_desc = format!("Rekonsiliasi Bank: {}", description);
         
         let lines = if amount > 0.0 {

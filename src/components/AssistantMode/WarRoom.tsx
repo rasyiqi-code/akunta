@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
+import { invoke } from '@tauri-apps/api/core';
 import { TrendingUp, Wallet, AlertTriangle, Info, BellRing } from 'lucide-react';
 import { db } from '../../utils/db';
 import { getAccountBalances, generateProfitLoss } from '../../utils/ledgerEngine';
@@ -17,6 +18,7 @@ export const WarRoom: React.FC = () => {
 
   // Reaktif terhadap perubahan database jurnal via React State
   const [journals, setJournals] = useState<any[]>([]);
+  const [userName, setUserName] = useState('Pengguna');
 
   // Fungsi untuk mendapatkan sapaan dinamis berdasarkan jam sistem lokal
   const getGreeting = () => {
@@ -98,6 +100,13 @@ export const WarRoom: React.FC = () => {
     };
 
     calculateDashboardStats();
+    (async () => {
+      try {
+        const settingsJson = await invoke<string>('get_app_settings_rust');
+        const settings = JSON.parse(settingsJson);
+        if (settings.user_name) setUserName(settings.user_name);
+      } catch {}
+    })();
   }, [journals]);
 
   // Evaluasi notifikasi berdasarkan data real-time
@@ -169,7 +178,7 @@ export const WarRoom: React.FC = () => {
       {/* Sapaan Personal */}
       <div>
         <h3 style={{ fontSize: '13px', fontWeight: 600, marginBottom: '2px', color: 'var(--text-primary)' }}>
-          {getGreeting()}, Pak Budi!
+          {getGreeting()}, {userName}!
         </h3>
         <p style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>
           Ringkasan kesehatan finansial usaha Anda per hari ini.

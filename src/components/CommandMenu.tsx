@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, Sparkles, Navigation, Trash2, Download } from 'lucide-react';
 import { db } from '../utils/db';
-import { parseInputWithGemini } from '../utils/gemini';
+import { parseInputWithGemini } from '../utils/ai';
 import { exportToBackupString } from '../utils/ledgerEngine';
 
 interface CommandMenuProps {
@@ -152,12 +152,16 @@ export const CommandMenu: React.FC<CommandMenuProps> = ({ activeTab, setActiveTa
   const navItems = [
     { label: 'Buka Jurnal Umum', value: 'JURNAL', icon: <Navigation size={13} /> },
     { label: 'Buka Daftar Akun (COA)', value: 'BUKUBESAR', icon: <Navigation size={13} /> },
+    { label: 'Buka Modul Penjualan', value: 'PENJUALAN', icon: <Navigation size={13} /> },
+    { label: 'Buka Modul Pembelian', value: 'PEMBELIAN', icon: <Navigation size={13} /> },
     { label: 'Buka Neraca Saldo (Trial Balance)', value: 'NERACASALDO', icon: <Navigation size={13} /> },
     { label: 'Buka Persediaan Barang', value: 'PERSEDIAAN', icon: <Navigation size={13} /> },
     { label: 'Buka Modul Aset Tetap', value: 'ASETTETAP', icon: <Navigation size={13} /> },
     { label: 'Buka Laporan Laba Rugi', value: 'LABARUGI', icon: <Navigation size={13} /> },
     { label: 'Buka Laporan Neraca', value: 'NERACA', icon: <Navigation size={13} /> },
+    { label: 'Buka Laporan Perubahan Ekuitas', value: 'EKUITAS', icon: <Navigation size={13} /> },
     { label: 'Buka Laporan Arus Kas', value: 'ARUSKAS', icon: <Navigation size={13} /> },
+    { label: 'Buka Analisis Piutang & Utang', value: 'AGING', icon: <Navigation size={13} /> },
     { label: 'Buka Bank & Perpajakan', value: 'PAJAK', icon: <Navigation size={13} /> },
   ];
 

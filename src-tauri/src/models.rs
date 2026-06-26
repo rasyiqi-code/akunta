@@ -42,6 +42,10 @@ pub struct SalesDocument {
     pub reference_id: Option<String>,
     #[serde(rename = "totalAmount")]
     pub total_amount: f64,
+    #[serde(rename = "ppnAmount")]
+    pub ppn_amount: f64,
+    #[serde(rename = "grandTotal")]
+    pub grand_total: f64,
     #[serde(rename = "dpApplied")]
     pub dp_applied: f64,
     pub items: Option<Vec<SalesDocumentItem>>,
@@ -74,6 +78,10 @@ pub struct PurchaseDocument {
     pub reference_id: Option<String>,
     #[serde(rename = "totalAmount")]
     pub total_amount: f64,
+    #[serde(rename = "ppnAmount")]
+    pub ppn_amount: f64,
+    #[serde(rename = "grandTotal")]
+    pub grand_total: f64,
     #[serde(rename = "dpApplied")]
     pub dp_applied: f64,
     pub items: Option<Vec<PurchaseDocumentItem>>,
@@ -256,6 +264,12 @@ pub struct TaxSummary {
     #[serde(rename = "pph23")]
     pub pph23: f64,
     pub transactions: Vec<TaxTransaction>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Setting {
+    pub key: String,
+    pub value: String,
 }
 
 #[derive(Serialize, Deserialize, Clone)]

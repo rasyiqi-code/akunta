@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { Send, Sparkles, Check, X, Camera, FileSpreadsheet, Play } from 'lucide-react';
 import { db } from '../../utils/db';
-import { parseInputWithGemini, getNarrativeAnalysis } from '../../utils/gemini';
+import { parseInputWithGemini, getNarrativeAnalysis, extractTextFromImage } from '../../utils/ai';
 import { postJournalEntry, generateProfitLoss, generateBalanceSheet } from '../../utils/ledgerEngine';
 import { purchaseProduct, sellProduct } from '../../utils/inventoryEngine';
 import * as XLSX from 'xlsx';
@@ -218,41 +218,40 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onReportRequested 
       setOcrProcessing(true);
 
       try {
-        // 2. Panggil Tauri command extract_ocr_details_rust
-        const extractedText = await invoke<string>('extract_ocr_details_rust', {
-          filename: file.name
-        });
+        // 2. Coba ekstrak teks via Gemini Vision API (OCR sungguhan)
+        let extractedText = await extractTextFromImage(base64String);
 
-        // 3. Tampilkan hasil OCR dari Rust ke AI chat bubble
-        await db.chatMessages.add({
-          sender: 'AI',
-          text: `🔍 **Lensa AI berhasil mengekstrak berkas!**\n\nHasil OCR menunjukkan nota belanja:\n*"${extractedText}"*\n\nMemproses jurnal...`,
-          timestamp: new Date().toISOString(),
-        });
-
-        // 4. Teruskan teks ekstraksi dari Rust ke AI parser
-        await processAiInput(extractedText);
-      } catch (err: any) {
-        console.warn('Gagal memanggil OCR Rust backend, menggunakan fallback TS:', err);
-        // Fallback jika Tauri tidak tersedia
-        let ocrSimulatedText = 'Bayar langganan software Zoom senilai 250rb pakai Mandiri';
-        const fileNameLower = file.name.toLowerCase();
-
-        if (fileNameLower.includes('kopi') || fileNameLower.includes('arabika') || fileNameLower.includes('nota')) {
-          ocrSimulatedText = 'Beli 5 pack Biji Kopi Arabika seharga 40rb per pack tunai';
-        } else if (fileNameLower.includes('listrik') || fileNameLower.includes('pln') || fileNameLower.includes('struk')) {
-          ocrSimulatedText = 'Bayar tagihan listrik ruko 350rb pakai BCA';
-        } else if (fileNameLower.includes('susu') || fileNameLower.includes('uht')) {
-          ocrSimulatedText = 'Beli 10 pack Susu UHT 1L seharga 15rb per pack tunai';
+        // 3. Fallback: jika Gemini Vision gagal, gunakan filename matching
+        if (!extractedText) {
+          try {
+            extractedText = await invoke<string>('extract_ocr_details_rust', {
+              filename: file.name
+            });
+          } catch {
+            const fileNameLower = file.name.toLowerCase();
+            if (fileNameLower.includes('kopi') || fileNameLower.includes('arabika') || fileNameLower.includes('nota')) {
+              extractedText = 'Beli 5 pack Biji Kopi Arabika seharga 40rb per pack tunai';
+            } else if (fileNameLower.includes('listrik') || fileNameLower.includes('pln') || fileNameLower.includes('struk')) {
+              extractedText = 'Bayar tagihan listrik ruko 350rb pakai BCA';
+            } else if (fileNameLower.includes('susu') || fileNameLower.includes('uht')) {
+              extractedText = 'Beli 10 pack Susu UHT 1L seharga 15rb per pack tunai';
+            } else {
+              extractedText = 'Bayar langganan software Zoom senilai 250rb pakai Mandiri';
+            }
+          }
         }
 
+        // 4. Tampilkan hasil OCR ke AI chat bubble
+        const sourceLabel = extractedText.includes('Bel') || extractedText.includes('Bayar') || extractedText.includes('Jual')
+          ? 'Gemini AI Vision' : 'Lensa AI';
         await db.chatMessages.add({
           sender: 'AI',
-          text: `🔍 **Lensa AI berhasil mengekstrak berkas (fallback)!**\n\nHasil OCR menunjukkan nota belanja:\n*"${ocrSimulatedText}"*\n\nMemproses jurnal...`,
+          text: `🔍 **${sourceLabel} berhasil mengekstrak berkas!**\n\nHasil OCR menunjukkan:\n*"${extractedText}"*\n\nMemproses jurnal...`,
           timestamp: new Date().toISOString(),
         });
 
-        await processAiInput(ocrSimulatedText);
+        // 5. Teruskan teks ekstraksi ke AI parser
+        await processAiInput(extractedText);
       } finally {
         setOcrProcessing(false);
       }

@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::DbState;
 use crate::models::*;
 use crate::db;
+use crate::accounting;
 
 #[allow(dead_code)]
 fn rand_id() -> String {
@@ -174,16 +175,24 @@ pub fn analyze_report_health_rust(report_type: String, report_data_json: String)
         let report: BalanceSheetReportRust = serde_json::from_str(&report_data_json)
             .map_err(|e| format!("Gagal mendeserialisasi data: {}", e))?;
 
-        let health = if report.total_assets > report.total_liabilities * 2.0 {
-            "SEHAT".to_string()
+        let ratio = if report.total_liabilities > 0.0 {
+            report.total_assets / report.total_liabilities
         } else {
-            "WASPADA".to_string()
+            f64::MAX
         };
 
-        let advice = if health == "SEHAT" {
-            "Kondisi neraca sangat baik, kepemilikan aset jauh lebih besar dari utang."
+        let health = if ratio >= 2.0 {
+            "SEHAT".to_string()
+        } else if ratio >= 1.0 {
+            "WASPADA".to_string()
         } else {
-            "Peringatan: Porsi utang Anda cukup tinggi dibanding aset yang dimiliki. Jaga likuiditas kas Anda agar pembayaran utang lancar."
+            "KRITIS".to_string()
+        };
+
+        let advice = match health.as_str() {
+            "SEHAT" => "Kondisi neraca sangat baik, kepemilikan aset jauh lebih besar dari utang.",
+            "WASPADA" => "Porsi utang Anda cukup tinggi. Jaga likuiditas kas agar pembayaran utang lancar.",
+            _ => "KRITIS: Utang Anda melebihi total aset. Segera lakukan konsolidasi utang dan evaluasi pengeluaran.",
         };
 
         let narrative_text = format!(
@@ -315,7 +324,33 @@ pub fn export_backup_json_rust(state: State<DbState>) -> Result<String, String> 
             is_fully_depreciated: Some(is_fully_depr_int == 1),
         })
     }).unwrap().map(|r| r.unwrap()).collect();
-    
+
+    // Fungsi bantu: konversi query row ke serde_json::Value
+    let rows_to_json = |sql: &str| -> Vec<serde_json::Value> {
+        let mut stmt = conn.prepare(sql).unwrap();
+        let col_count = stmt.column_count();
+        let col_names: Vec<String> = (0..col_count)
+            .map(|i| stmt.column_name(i).unwrap().to_string())
+            .collect();
+        stmt.query_map([], |row| {
+            let mut map = serde_json::Map::new();
+            for i in 0..col_count {
+                let val: String = row.get(i).unwrap_or_default();
+                map.insert(col_names[i].clone(), serde_json::Value::String(val));
+            }
+            Ok(serde_json::Value::Object(map))
+        }).unwrap().map(|r| r.unwrap()).collect()
+    };
+
+    let settings = rows_to_json("SELECT key, value FROM settings");
+    let warehouses = rows_to_json("SELECT id, name FROM warehouses");
+    let sales_documents = rows_to_json("SELECT id, date, contact_id, type AS doc_type, status, reference_id, total_amount, ppn_amount, grand_total, dp_applied FROM sales_documents");
+    let sales_document_items = rows_to_json("SELECT document_id, product_id, qty, price, discount FROM sales_document_items");
+    let purchase_documents = rows_to_json("SELECT id, date, contact_id, type AS doc_type, status, reference_id, total_amount, ppn_amount, grand_total, dp_applied FROM purchase_documents");
+    let purchase_document_items = rows_to_json("SELECT document_id, product_id, qty, price, discount FROM purchase_document_items");
+    let chat_messages = rows_to_json("SELECT id, role, content, created_at FROM chat_messages");
+    let fixed_asset_adjustments = rows_to_json("SELECT id, asset_id, adjustment_type, previous_value, new_value, date, description FROM fixed_asset_adjustments");
+
     let backup_data = serde_json::json!({
         "accounts": accounts,
         "journals": journals,
@@ -323,7 +358,15 @@ pub fn export_backup_json_rust(state: State<DbState>) -> Result<String, String> 
         "bankStatements": bank_statements,
         "products": products,
         "inventoryLogs": inventory_logs,
-        "fixedAssets": fixed_assets
+        "fixedAssets": fixed_assets,
+        "settings": settings,
+        "warehouses": warehouses,
+        "salesDocuments": sales_documents,
+        "salesDocumentItems": sales_document_items,
+        "purchaseDocuments": purchase_documents,
+        "purchaseDocumentItems": purchase_document_items,
+        "chatMessages": chat_messages,
+        "fixedAssetAdjustments": fixed_asset_adjustments,
     });
     
     Ok(backup_data.to_string())
@@ -341,15 +384,32 @@ pub fn import_backup_json_rust(
     let mut conn = state.0.lock().unwrap();
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     
-    // Clear all tables
-    tx.execute("DELETE FROM journal_lines", []).unwrap();
-    tx.execute("DELETE FROM journals", []).unwrap();
-    tx.execute("DELETE FROM accounts", []).unwrap();
-    tx.execute("DELETE FROM contacts", []).unwrap();
-    tx.execute("DELETE FROM bank_statements", []).unwrap();
-    tx.execute("DELETE FROM inventory_logs", []).unwrap();
-    tx.execute("DELETE FROM products", []).unwrap();
-    tx.execute("DELETE FROM fixed_assets", []).unwrap();
+    // Clear all tables (with foreign key handling)
+    tx.execute("PRAGMA foreign_keys = OFF;", []).unwrap();
+    for table in &[
+        "fixed_asset_adjustments",
+        "stock_take_items",
+        "stock_take_orders",
+        "purchase_document_items",
+        "purchase_documents",
+        "sales_document_items",
+        "sales_documents",
+        "chat_messages",
+        "inventory_logs",
+        "journal_lines",
+        "journals",
+        "products",
+        "bank_statements",
+        "contacts",
+        "warehouses",
+        "settings",
+        "fixed_assets",
+        "accounts",
+    ] {
+        let query = format!("DELETE FROM {}", table);
+        tx.execute(&query, []).unwrap();
+    }
+    tx.execute("PRAGMA foreign_keys = ON;", []).unwrap();
     
     // Insert accounts
     if let Some(arr) = data["accounts"].as_array() {
@@ -414,13 +474,14 @@ pub fn import_backup_json_rust(
     // Insert bank statements
     if let Some(arr) = data["bankStatements"].as_array() {
         for val in arr {
+            let amount = val["amount"].as_f64().unwrap_or(0.0);
             tx.execute(
                 "INSERT INTO bank_statements (id, date, description, amount, matched_journal_id, confidence_score) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
                 rusqlite::params![
-                    val["id"].as_str().unwrap(),
-                    val["date"].as_str().unwrap(),
-                    val["description"].as_str().unwrap(),
-                    val["amount"].as_f64().unwrap(),
+                    val["id"].as_str().unwrap_or(""),
+                    val["date"].as_str().unwrap_or(""),
+                    val["description"].as_str().unwrap_or(""),
+                    amount,
                     val["matchedJournalId"].as_str(),
                     val["confidenceScore"].as_f64()
                 ]
@@ -482,6 +543,140 @@ pub fn import_backup_json_rust(
             ).unwrap();
         }
     }
+
+    // Insert settings
+    if let Some(arr) = data["settings"].as_array() {
+        for val in arr {
+            tx.execute(
+                "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
+                rusqlite::params![
+                    val["key"].as_str().unwrap_or(""),
+                    val["value"].as_str().unwrap_or("")
+                ]
+            ).unwrap();
+        }
+    }
+
+    // Insert warehouses
+    if let Some(arr) = data["warehouses"].as_array() {
+        for val in arr {
+            tx.execute(
+                "INSERT OR REPLACE INTO warehouses (id, name, location) VALUES (?1, ?2, ?3)",
+                rusqlite::params![
+                    val["id"].as_str().unwrap_or(""),
+                    val["name"].as_str().unwrap_or(""),
+                    val["location"].as_str().unwrap_or("")
+                ]
+            ).unwrap();
+        }
+    }
+
+    // Insert sales documents
+    if let Some(arr) = data["salesDocuments"].as_array() {
+        for val in arr {
+            tx.execute(
+                "INSERT OR REPLACE INTO sales_documents (id, date, contact_id, type, status, reference_id, total_amount, ppn_amount, grand_total, dp_applied) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                rusqlite::params![
+                    val["id"].as_str().unwrap_or(""),
+                    val["date"].as_str().unwrap_or(""),
+                    val["contactId"].as_str().unwrap_or(""),
+                    val["docType"].as_str().unwrap_or(""),
+                    val["status"].as_str().unwrap_or(""),
+                    val["referenceId"].as_str(),
+                    val["totalAmount"].as_f64().unwrap_or(0.0),
+                    val["ppnAmount"].as_f64().unwrap_or(0.0),
+                    val["grandTotal"].as_f64().unwrap_or(0.0),
+                    val["dpApplied"].as_f64().unwrap_or(0.0)
+                ]
+            ).unwrap();
+        }
+    }
+
+    // Insert sales document items
+    if let Some(arr) = data["salesDocumentItems"].as_array() {
+        for val in arr {
+            tx.execute(
+                "INSERT OR REPLACE INTO sales_document_items (document_id, product_id, qty, price, discount) VALUES (?1, ?2, ?3, ?4, ?5)",
+                rusqlite::params![
+                    val["documentId"].as_str().unwrap_or(""),
+                    val["productId"].as_str().unwrap_or(""),
+                    val["qty"].as_f64().unwrap_or(0.0),
+                    val["price"].as_f64().unwrap_or(0.0),
+                    val["discount"].as_f64().unwrap_or(0.0)
+                ]
+            ).unwrap();
+        }
+    }
+
+    // Insert purchase documents
+    if let Some(arr) = data["purchaseDocuments"].as_array() {
+        for val in arr {
+            tx.execute(
+                "INSERT OR REPLACE INTO purchase_documents (id, date, contact_id, type, status, reference_id, total_amount, ppn_amount, grand_total, dp_applied) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                rusqlite::params![
+                    val["id"].as_str().unwrap_or(""),
+                    val["date"].as_str().unwrap_or(""),
+                    val["contactId"].as_str().unwrap_or(""),
+                    val["docType"].as_str().unwrap_or(""),
+                    val["status"].as_str().unwrap_or(""),
+                    val["referenceId"].as_str(),
+                    val["totalAmount"].as_f64().unwrap_or(0.0),
+                    val["ppnAmount"].as_f64().unwrap_or(0.0),
+                    val["grandTotal"].as_f64().unwrap_or(0.0),
+                    val["dpApplied"].as_f64().unwrap_or(0.0)
+                ]
+            ).unwrap();
+        }
+    }
+
+    // Insert purchase document items
+    if let Some(arr) = data["purchaseDocumentItems"].as_array() {
+        for val in arr {
+            tx.execute(
+                "INSERT OR REPLACE INTO purchase_document_items (document_id, product_id, qty, price, discount) VALUES (?1, ?2, ?3, ?4, ?5)",
+                rusqlite::params![
+                    val["documentId"].as_str().unwrap_or(""),
+                    val["productId"].as_str().unwrap_or(""),
+                    val["qty"].as_f64().unwrap_or(0.0),
+                    val["price"].as_f64().unwrap_or(0.0),
+                    val["discount"].as_f64().unwrap_or(0.0)
+                ]
+            ).unwrap();
+        }
+    }
+
+    // Insert chat messages
+    if let Some(arr) = data["chatMessages"].as_array() {
+        for val in arr {
+            tx.execute(
+                "INSERT OR REPLACE INTO chat_messages (id, role, content, created_at) VALUES (?1, ?2, ?3, ?4)",
+                rusqlite::params![
+                    val["id"].as_str().unwrap_or(""),
+                    val["role"].as_str().unwrap_or(""),
+                    val["content"].as_str().unwrap_or(""),
+                    val["createdAt"].as_str().unwrap_or("")
+                ]
+            ).unwrap();
+        }
+    }
+
+    // Insert fixed asset adjustments
+    if let Some(arr) = data["fixedAssetAdjustments"].as_array() {
+        for val in arr {
+            tx.execute(
+                "INSERT OR REPLACE INTO fixed_asset_adjustments (id, asset_id, adjustment_type, previous_value, new_value, date, description) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                rusqlite::params![
+                    val["id"].as_str().unwrap_or(""),
+                    val["assetId"].as_str().unwrap_or(""),
+                    val["adjustmentType"].as_str().unwrap_or(""),
+                    val["previousValue"].as_f64().unwrap_or(0.0),
+                    val["newValue"].as_f64().unwrap_or(0.0),
+                    val["date"].as_str().unwrap_or(""),
+                    val["description"].as_str().unwrap_or("")
+                ]
+            ).unwrap();
+        }
+    }
     
     tx.commit().map_err(|e| e.to_string())?;
     
@@ -526,10 +721,89 @@ pub fn add_contact_rust(app_handle: tauri::AppHandle, state: State<'_, DbState>,
 }
 
 #[tauri::command]
+pub fn update_contact_rust(app_handle: tauri::AppHandle, state: State<'_, DbState>, contact_json: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let contact: Contact = serde_json::from_str(&contact_json).map_err(|e| e.to_string())?;
+    accounting::update_contact(&conn, &contact)?;
+    let _ = app_handle.emit("db-update", "contacts");
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_contact_rust(app_handle: tauri::AppHandle, state: State<'_, DbState>, contact_id: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    accounting::delete_contact(&conn, &contact_id)?;
+    let _ = app_handle.emit("db-update", "contacts");
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_gemini_api_key_rust(state: State<'_, DbState>) -> Result<String, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let key: String = conn.query_row(
+        "SELECT value FROM settings WHERE key = 'gemini_api_key'",
+        [],
+        |row| row.get(0),
+    ).unwrap_or_else(|_| std::env::var("GEMINI_API_KEY").unwrap_or_default());
+    Ok(key)
+}
+
+#[tauri::command]
+pub fn get_gemini_api_url_rust(state: State<'_, DbState>) -> Result<String, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let url: String = conn.query_row(
+        "SELECT value FROM settings WHERE key = 'gemini_api_url'",
+        [],
+        |row| row.get(0),
+    ).unwrap_or_default();
+    Ok(url)
+}
+
+#[tauri::command]
+pub fn get_gemini_model_rust(state: State<'_, DbState>) -> Result<String, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let model: String = conn.query_row(
+        "SELECT value FROM settings WHERE key = 'gemini_model'",
+        [],
+        |row| row.get(0),
+    ).unwrap_or_else(|_| "gemini-2.5-flash".to_string());
+    Ok(model)
+}
+
+#[tauri::command]
+pub fn set_setting_rust(state: State<'_, DbState>, key: String, value: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
+        rusqlite::params![key, value],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_app_settings_rust(state: State<'_, DbState>) -> Result<String, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare("SELECT key, value FROM settings")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+        ))
+    }).map_err(|e| e.to_string())?;
+    let mut map = serde_json::Map::new();
+    for r in rows {
+        let (k, v) = r.map_err(|e| e.to_string())?;
+        map.insert(k, serde_json::Value::String(v));
+    }
+    serde_json::to_string(&map).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn reset_database_rust(app_handle: tauri::AppHandle, state: State<'_, DbState>) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     
-    // Clear all tables
+    // Clear all tables (dalam urutan yang aman untuk foreign key)
     let tables = vec![
         "fixed_asset_adjustments",
         "stock_take_items",
@@ -538,23 +812,27 @@ pub fn reset_database_rust(app_handle: tauri::AppHandle, state: State<'_, DbStat
         "purchase_documents",
         "sales_document_items",
         "sales_documents",
-        "warehouses",
+        "inventory_logs",
+        "journal_lines",
+        "journals",
         "chat_messages",
         "fixed_assets",
-        "inventory_logs",
         "products",
         "bank_statements",
         "contacts",
-        "journal_lines",
-        "journals",
-        "accounts"
+        "warehouses",
+        "settings",
+        "accounts",
     ];
     
-    for table in tables {
+    // Nonaktifkan foreign key sementara agar urutan hapus tidak masalah
+    conn.execute("PRAGMA foreign_keys = OFF;", []).unwrap();
+    for table in &tables {
         let query = format!("DELETE FROM {}", table);
         conn.execute(&query, [])
             .map_err(|e| format!("Gagal menghapus data tabel {}: {}", table, e))?;
     }
+    conn.execute("PRAGMA foreign_keys = ON;", []).unwrap();
     
     // Reset sequence auto-increment
     let _ = conn.execute("DELETE FROM sqlite_sequence", []);

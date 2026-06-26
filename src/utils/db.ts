@@ -31,6 +31,12 @@ export const db = {
     get: async (code: string): Promise<Account | undefined> => {
       const accounts = await db.accounts.toArray();
       return accounts.find(a => a.code === code);
+    },
+    put: async (account: Account): Promise<void> => {
+      await invoke('upsert_account_rust', { accountJson: JSON.stringify(account) });
+    },
+    delete: async (code: string): Promise<void> => {
+      await invoke('delete_account_rust', { code });
     }
   },
 
@@ -48,6 +54,9 @@ export const db = {
       return await invoke<string>('post_journal_entry_rust', {
         entryJson: JSON.stringify(entry)
       });
+    },
+    delete: async (journalId: string): Promise<void> => {
+      await invoke('delete_journal_rust', { journalId });
     }
   },
 
@@ -112,11 +121,13 @@ export const db = {
         productJson: JSON.stringify(product)
       });
     },
-    update: async (id: string, _changes: Partial<Product>): Promise<void> => {
-      // Tidak melakukan apa-apa di frontend karena data stok diperbarui
-      // via transaksi native di Rust.
-      console.log(`Frontend DB: request update product ${id} ignored. Handled by Rust.`);
-      return;
+    put: async (product: Product): Promise<void> => {
+      await invoke<void>('update_product_rust', {
+        productJson: JSON.stringify(product)
+      });
+    },
+    delete: async (id: string): Promise<void> => {
+      await invoke<void>('delete_product_rust', { productId: id });
     }
   },
 
@@ -156,9 +167,12 @@ export const db = {
       });
     },
     put: async (asset: FixedAsset): Promise<void> => {
-      // Penyusutan bulanan ditangani secara native di Rust.
-      console.log(`Frontend DB: request put asset ${asset.id} ignored. Handled by Rust.`);
-      return;
+      await invoke<void>('update_fixed_asset_rust', {
+        assetJson: JSON.stringify(asset)
+      });
+    },
+    delete: async (id: string): Promise<void> => {
+      await invoke<void>('delete_fixed_asset_rust', { assetId: id });
     }
   },
 
@@ -193,6 +207,14 @@ export const db = {
       await invoke<void>('add_contact_rust', {
         contactJson: JSON.stringify(contact)
       });
+    },
+    put: async (contact: Contact): Promise<void> => {
+      await invoke<void>('update_contact_rust', {
+        contactJson: JSON.stringify(contact)
+      });
+    },
+    delete: async (id: string): Promise<void> => {
+      await invoke<void>('delete_contact_rust', { contactId: id });
     }
   },
 
@@ -210,6 +232,9 @@ export const db = {
       await invoke<void>('create_sales_document_rust', {
         docJson: JSON.stringify(doc)
       });
+    },
+    delete: async (id: string): Promise<void> => {
+      await invoke<void>('delete_sales_document_rust', { docId: id });
     }
   },
 
@@ -227,6 +252,9 @@ export const db = {
       await invoke<void>('create_purchase_document_rust', {
         docJson: JSON.stringify(doc)
       });
+    },
+    delete: async (id: string): Promise<void> => {
+      await invoke<void>('delete_purchase_document_rust', { docId: id });
     }
   },
 
@@ -239,6 +267,19 @@ export const db = {
         console.error('Error fetching warehouses:', err);
         return [];
       }
+    },
+    add: async (warehouse: Warehouse): Promise<void> => {
+      await invoke<void>('add_warehouse_rust', {
+        warehouseJson: JSON.stringify(warehouse)
+      });
+    },
+    put: async (warehouse: Warehouse): Promise<void> => {
+      await invoke<void>('update_warehouse_rust', {
+        warehouseJson: JSON.stringify(warehouse)
+      });
+    },
+    delete: async (id: string): Promise<void> => {
+      await invoke<void>('delete_warehouse_rust', { warehouseId: id });
     }
   },
 

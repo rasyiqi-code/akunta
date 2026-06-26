@@ -125,6 +125,8 @@ fn migrate_schema(conn: &Connection) -> std::result::Result<(), String> {
             status TEXT NOT NULL, -- 'PENDING' | 'COMPLETED' | 'CANCELLED'
             reference_id TEXT,
             total_amount REAL NOT NULL,
+            ppn_amount REAL DEFAULT 0.0,
+            grand_total REAL DEFAULT 0.0,
             dp_applied REAL DEFAULT 0.0,
             FOREIGN KEY (contact_id) REFERENCES contacts(id)
         );"#,
@@ -148,6 +150,8 @@ fn migrate_schema(conn: &Connection) -> std::result::Result<(), String> {
             status TEXT NOT NULL, -- 'PENDING' | 'COMPLETED' | 'CANCELLED'
             reference_id TEXT,
             total_amount REAL NOT NULL,
+            ppn_amount REAL DEFAULT 0.0,
+            grand_total REAL DEFAULT 0.0,
             dp_applied REAL DEFAULT 0.0,
             FOREIGN KEY (contact_id) REFERENCES contacts(id)
         );"#,
@@ -421,14 +425,19 @@ pub fn seed_default_data(conn: &Connection, seed_demo: bool) -> std::result::Res
         }
     }
 
+    // Migrasi: tambah kolom ppn_amount & grand_total ke sales_documents (jika belum ada)
+    let _ = conn.execute("ALTER TABLE sales_documents ADD COLUMN ppn_amount REAL DEFAULT 0.0", []);
+    let _ = conn.execute("ALTER TABLE sales_documents ADD COLUMN grand_total REAL DEFAULT 0.0", []);
+    let _ = conn.execute("ALTER TABLE purchase_documents ADD COLUMN ppn_amount REAL DEFAULT 0.0", []);
+    let _ = conn.execute("ALTER TABLE purchase_documents ADD COLUMN grand_total REAL DEFAULT 0.0", []);
+
     // 7. Cek & Seed Initial Chat Message
     let count_messages: i64 = conn
         .query_row("SELECT COUNT(*) FROM chat_messages", [], |r| r.get(0))
         .map_err(|e| format!("Gagal membaca count chat messages: {}", e))?;
 
     if count_messages == 0 {
-        // Gunakan timestamp statis format ISO agar konsisten
-        let now = "2026-06-24T20:00:00.000Z";
+        let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S.000Z").to_string();
         conn.execute(
             "INSERT INTO chat_messages (sender, text, timestamp) VALUES (?1, ?2, ?3)",
             [

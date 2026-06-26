@@ -16,7 +16,7 @@ export const SalesManager: React.FC = () => {
   // Modal Form State
   const [showModal, setShowModal] = useState(false);
   const [docType, setDocType] = useState<'QUOTATION' | 'ORDER' | 'DELIVERY' | 'INVOICE' | 'RETURN'>('INVOICE');
-  const [contactId, setContactId] = useState('c-01');
+  const [contactId, setContactId] = useState('');
   const [referenceId, setReferenceId] = useState('');
   const [items, setItems] = useState<any[]>([
     { productId: '', qty: 1, price: 0, discount: 0 }
@@ -118,6 +118,8 @@ export const SalesManager: React.FC = () => {
       const lineTotal = item.qty * item.price * (1 - item.discount / 100);
       return sum + lineTotal;
     }, 0);
+    const ppnAmount = Math.round(totalBeforePpn * 0.11);
+    const grandTotal = totalBeforePpn + ppnAmount;
 
     const finalDoc = {
       id: docId,
@@ -127,6 +129,8 @@ export const SalesManager: React.FC = () => {
       status: docType === 'INVOICE' ? 'COMPLETED' : 'PENDING',
       referenceId: referenceId || undefined,
       totalAmount: totalBeforePpn,
+      ppnAmount,
+      grandTotal,
       dpApplied,
       items: items.map(i => ({
         documentId: docId,
@@ -336,6 +340,7 @@ export const SalesManager: React.FC = () => {
                 <th>Nama Pelanggan</th>
                 <th>Tipe</th>
                 <th>Status</th>
+                <th style={{ width: '60px' }}>Aksi</th>
               </tr>
             </thead>
             <tbody>
@@ -350,6 +355,10 @@ export const SalesManager: React.FC = () => {
                   </td>
                   <td>
                     <span className="badge-glow badge-glow-success">Aktif</span>
+                  </td>
+                  <td>
+                    <button className="btn btn-secondary" style={{ padding: '2px 5px', fontSize: '10px', marginRight: '2px' }} title="Edit" onClick={async () => { const newName = prompt('Nama baru:', c.name); if (newName && newName !== c.name) { await db.contacts.put({ ...c, name: newName }); fetchData(); } }}>✎</button>
+                    <button className="btn btn-secondary" style={{ padding: '2px 5px', fontSize: '10px' }} title="Hapus" onClick={async () => { if (window.confirm(`Hapus pelanggan ${c.name}?`)) { await db.contacts.delete(c.id); fetchData(); } }}>🗑</button>
                   </td>
                 </tr>
               ))}
@@ -369,12 +378,13 @@ export const SalesManager: React.FC = () => {
                 <th>Uang Muka</th>
                 <th>Nilai (DPP)</th>
                 <th>Status</th>
+                <th style={{ width: '40px' }}>Aksi</th>
               </tr>
             </thead>
             <tbody>
               {getFilteredDocs().length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="td-empty">
+                  <td colSpan={8} className="td-empty">
                     Belum ada riwayat transaksi penjualan.
                   </td>
                 </tr>
@@ -401,6 +411,9 @@ export const SalesManager: React.FC = () => {
                         <span className={`badge-glow ${doc.status === 'COMPLETED' ? 'badge-glow-success' : 'badge-glow-warning'}`}>
                           {doc.status}
                         </span>
+                      </td>
+                      <td>
+                        <button className="btn btn-secondary" style={{ padding: '2px 5px', fontSize: '10px' }} title="Hapus" onClick={async () => { if (window.confirm(`Hapus dokumen ${doc.id}?`)) { await db.salesDocuments.delete(doc.id); fetchData(); } }}>🗑</button>
                       </td>
                     </tr>
                   );
