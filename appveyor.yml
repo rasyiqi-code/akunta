@@ -13,6 +13,7 @@ for:
     environment:
       WIN_SIGN_CERTIFICATE: ''
       WIN_SIGN_URL: ''
+      CI: false
     install:
       - ps: |
           appveyor-retry choco install rustup.install --no-progress
