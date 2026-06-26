@@ -20,7 +20,6 @@ for:
           refreshenv
           $env:Path += ";$env:USERPROFILE\.cargo\bin"
           rustup default stable-msvc
-          npx @tauri-apps/cli --version
       - cmd: npm ci
     build_script:
       - cmd: npm run tauri build
@@ -42,7 +41,6 @@ for:
             libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
             librsvg2-dev patchelf libssl-dev libsoup-3.0-dev \
             javascriptcoregtk-4.1 libjavascriptcoregtk-4.1-dev
-          npx @tauri-apps/cli --version
       - sh: npm ci
     build_script:
       - sh: npm run tauri build
